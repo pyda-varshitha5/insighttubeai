@@ -16,6 +16,10 @@ import { auth } from "@/app/lib/firebase";
 
 const googleProvider = new GoogleAuthProvider();
 
+googleProvider.setCustomParameters({
+  prompt: "select_account",
+});
+
 /* ---------------- Google Login ---------------- */
 
 export async function signInWithGoogle() {

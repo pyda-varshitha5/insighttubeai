@@ -8,6 +8,12 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  loginUser,
+  signInWithGoogle,
+} from "@/services/auth";
+import Link from "next/link";
 
 type LoginTab = "user" | "admin";
 interface LoginCardProps {
@@ -22,13 +28,78 @@ export default function LoginCard({
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const router = useRouter();
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Wire this up to your auth flow.
-    console.log({ activeTab, email, password });
-  };
+const [loading, setLoading] = useState(false);
+const [error, setError] = useState("");
 
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  setError("");
+
+  if (!email.trim()) {
+    setError("Email is required.");
+    return;
+  }
+
+  if (!password) {
+    setError("Password is required.");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    await loginUser(email, password);
+
+    if (activeTab === "admin") {
+      router.push("/admin/dashboard");
+    } else {
+      router.push("/dashboard");
+    }
+  } catch (error: any) {
+    switch (error.code) {
+      case "auth/invalid-credential":
+      case "auth/wrong-password":
+        setError("Incorrect email or password.");
+        break;
+
+      case "auth/user-not-found":
+        setError("No account found with this email.");
+        break;
+
+      case "auth/invalid-email":
+        setError("Invalid email.");
+        break;
+
+      default:
+        setError(error.message);
+    }
+  } finally {
+    setLoading(false);
+  }
+};
+const handleGoogleLogin = async () => {
+  try {
+    setLoading(true);
+    setError("");
+
+    await signInWithGoogle();
+
+    if (activeTab === "admin") {
+      router.push("/admin/dashboard");
+    } else {
+      router.push("/dashboard");
+    }
+  } catch (error: any) {
+    if (error.code !== "auth/cancelled-popup-request") {
+      setError(error.message);
+    }
+  } finally {
+    setLoading(false);
+  }
+};
   return (
   <div className="w-full flex items-center justify-center">
       {/* Left panel */}
@@ -71,7 +142,9 @@ export default function LoginCard({
           </div>
 
           <button
-            type="button"
+  type="button"
+  onClick={handleGoogleLogin}
+  disabled={loading}
             className="w-full flex items-center justify-center gap-3 border border-slate-200 rounded-xl py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors mb-5"
           >
             <GoogleIcon />
@@ -132,19 +205,24 @@ export default function LoginCard({
             </div>
 
             <div className="flex justify-end">
-              <a
-                href="#"
-                className="text-xs font-medium text-violet-500 hover:text-violet-600"
-              >
-                Forgot Password?
-              </a>
+              <Link
+  href="/forgot-password"
+  className="text-xs font-medium text-violet-500 hover:text-violet-600"
+>
+  Forgot Password?
+</Link>
             </div>
 
+{error && (
+  <p className="text-center text-sm text-red-500">
+    {error}
+  </p>
+)}
             <button
               type="submit"
               className="w-full py-3 rounded-xl bg-violet-500 hover:bg-violet-600 transition-colors text-white text-sm font-semibold shadow-sm shadow-violet-200"
             >
-              Login
+              {loading ? "Logging in..." : "Login"}
             </button>
           </form>
 

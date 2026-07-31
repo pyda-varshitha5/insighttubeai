@@ -68,24 +68,14 @@ export default function SignupCard({
       await registerUser(firstName, lastName, email, password);
 
       router.push("/dashboard");
-    } catch (err: any) {
-      switch (err.code) {
-        case "auth/email-already-in-use":
-          setError("Email already exists.");
-          break;
+    } catch (error: any) {
+  console.error("FULL ERROR:", error);
+  console.error("ERROR CODE:", error.code);
+  console.error("ERROR MESSAGE:", error.message);
 
-        case "auth/invalid-email":
-          setError("Invalid email address.");
-          break;
-
-        case "auth/weak-password":
-          setError("Password is too weak.");
-          break;
-
-        default:
-          setError("Unable to create account.");
-      }
-    } finally {
+  setError(error.message);
+}
+    finally {
       setLoading(false);
     }
   };

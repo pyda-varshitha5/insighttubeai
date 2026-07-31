@@ -14,15 +14,17 @@ import {
   Bell,
   Play,
 } from "lucide-react";
+import { useAuth } from "@/context/AuthProvider";
+import HistoryIllustration from "@/components/history/HistoryIllustration";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutGrid },
-  { label: "Search", href: "/dashboard/search", icon: Search },
-  { label: "History", href: "/dashboard/history", icon: History },
-  { label: "Saved", href: "/dashboard/saved", icon: Bookmark },
-  { label: "Analytics", href: "/dashboard/analytics", icon: BarChart2 },
-  { label: "Profile", href: "/dashboard/profile", icon: User },
-  { label: "Settings", href: "/dashboard/settings", icon: Settings },
+  { label: "Search", href: "/search", icon: Search },
+  { label: "History", href: "/history", icon: History },
+  { label: "Saved", href: "/saved", icon: Bookmark },
+  { label: "Analytics", href: "/analytics", icon: BarChart2 },
+  { label: "Profile", href: "/profile", icon: User },
+  { label: "Settings", href: "/settings", icon: Settings },
 ];
 
 export default function DashboardLayout({
@@ -31,11 +33,14 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const { user } = useAuth();
+
+  const firstName = user?.displayName?.split(" ")[0] || "User";
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar */}
-      <aside className="w-60 shrink-0 border-r border-slate-100 bg-white flex flex-col">
+      <aside className="w-64 shrink-0 border-r border-slate-100 bg-white flex flex-col">
         <div className="flex items-center gap-2 px-6 py-6">
           <div className="w-8 h-8 rounded-lg bg-violet-500 flex items-center justify-center">
             <Play size={16} className="text-white fill-white" />
@@ -45,16 +50,16 @@ export default function DashboardLayout({
           </span>
         </div>
 
-        <nav className="flex-1 px-3 space-y-1">
+        <nav className="flex-1 px-4 py-3 space-y-2">
           {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
             const active = pathname === href;
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] font-medium transition-all duration-200 ${
                   active
-                    ? "bg-violet-50 text-violet-600"
+                    ? "bg-violet-50 text-violet-600 shadow-sm"
                     : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                 }`}
               >
@@ -64,6 +69,10 @@ export default function DashboardLayout({
             );
           })}
         </nav>
+
+        <div className="mt-auto px-4 pb-6 pt-2">
+          <HistoryIllustration />
+        </div>
       </aside>
 
       {/* Main column */}
@@ -72,7 +81,7 @@ export default function DashboardLayout({
         <header className="flex items-center justify-between gap-4 px-8 py-5 border-b border-slate-100 bg-white">
           <div>
             <h1 className="text-lg font-bold text-slate-900">
-              Welcome back, Varshitha! 👋
+              Welcome back, {firstName}! 👋
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
               Learn any topic from YouTube, the smarter way.
