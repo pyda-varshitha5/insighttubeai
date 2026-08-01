@@ -22,54 +22,112 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&q=${encodeURIComponent(
-      query
-    )}&key=${API_KEY}`;
+    // -----------------------------
+    // Search Videos
+    // -----------------------------
 
-    const response = await fetch(url, {
-      cache: "no-store",
-    });
+    const searchResponse = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&q=${encodeURIComponent(
+        query
+      )}&key=${API_KEY}`,
+      {
+        cache: "no-store",
+      }
+    );
 
-    const data = await response.json();
+    const searchData = await searchResponse.json();
 
-    if (!response.ok) {
+    if (!searchResponse.ok) {
       return NextResponse.json(
         {
-          error: data.error?.message || "Failed to fetch videos",
+          error: searchData.error?.message || "Failed to fetch videos",
         },
         {
-          status: response.status,
+          status: searchResponse.status,
         }
       );
     }
 
-   const videos = data.items.map((item: {
-  id: { videoId: string };
-  snippet: {
-    title: string;
-    description: string;
-    channelTitle: string;
-    publishedAt: string;
-    thumbnails: {
-      high?: { url: string };
-      medium?: { url: string };
-    };
-  };
-}) => ({
-      id: item.id.videoId,
-      title: item.snippet.title,
-      description: item.snippet.description,
-      thumbnail:
-        item.snippet.thumbnails.high?.url ||
-        item.snippet.thumbnails.medium?.url,
-      channel: item.snippet.channelTitle,
-      publishedAt: item.snippet.publishedAt,
-      url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-    }));
+    // -----------------------------
+    // Get IDs
+    // -----------------------------
+
+    const ids = searchData.items
+      .map((item: { id: { videoId: string } }) => item.id.videoId)
+      .join(",");
+
+    // -----------------------------
+    // Get Statistics
+    // -----------------------------
+
+    const detailsResponse = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=statistics,contentDetails&id=${ids}&key=${API_KEY}`,
+      {
+        cache: "no-store",
+      }
+    );
+
+    const detailsData = await detailsResponse.json();
+
+    const detailsMap = new Map(
+      detailsData.items.map(
+        (item: {
+          id: string;
+          statistics: {
+            viewCount: string;
+          };
+          contentDetails: {
+            duration: string;
+          };
+        }) => [
+          item.id,
+          {
+            views: item.statistics.viewCount,
+            duration: item.contentDetails.duration,
+          },
+        ]
+      )
+    );
+
+    // -----------------------------
+    // Merge Search + Statistics
+    // -----------------------------
+
+    const videos = searchData.items.map(
+      (item: {
+        id: { videoId: string };
+        snippet: {
+          title: string;
+          description: string;
+          channelTitle: string;
+          publishedAt: string;
+          thumbnails: {
+            high?: { url: string };
+            medium?: { url: string };
+          };
+        };
+      }) => {
+        const extra = detailsMap.get(item.id.videoId);
+
+        return {
+          id: item.id.videoId,
+          title: item.snippet.title,
+          description: item.snippet.description,
+          thumbnail:
+            item.snippet.thumbnails.high?.url ||
+            item.snippet.thumbnails.medium?.url,
+          channel: item.snippet.channelTitle,
+          publishedAt: item.snippet.publishedAt,
+          views: (extra as any)?.views || "0",
+duration: (extra as any)?.duration || "",
+          url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+        };
+      }
+    );
 
     return NextResponse.json(videos);
   } catch (error) {
-    console.error("YouTube Search Error:", error);
+    console.error(error);
 
     return NextResponse.json(
       {

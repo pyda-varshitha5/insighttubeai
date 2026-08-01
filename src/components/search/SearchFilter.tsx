@@ -1,17 +1,40 @@
 "use client";
 
-import { Filter, ChevronDown } from "lucide-react";
+import { Search } from "lucide-react";
 
-export default function SearchFilter() {
+interface SearchFilterProps {
+  query: string;
+  setQuery: (value: string) => void;
+  onSearch: () => void;
+}
+
+export default function SearchFilter({
+  query,
+  setQuery,
+  onSearch,
+}: SearchFilterProps) {
   return (
-    <div className="flex justify-end">
-      <button className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
-        <Filter size={18} className="text-violet-600" />
+    <div className="flex justify-start">
+<div className="flex w-full max-w-xl items-center rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm">        <Search className="mr-2 h-4 w-4 text-gray-400" />
 
-        <span>Filter</span>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onSearch();
+          }}
+          placeholder="Search any topic..."
+          className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400"
+        />
 
-        <ChevronDown size={16} className="text-slate-500" />
-      </button>
+        <button
+          onClick={onSearch}
+          className="ml-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700"
+        >
+          Search
+        </button>
+      </div>
     </div>
   );
 }

@@ -81,7 +81,7 @@ export default function DashboardLayout({
         <header className="flex items-center justify-between gap-4 px-8 py-5 border-b border-slate-100 bg-white">
           <div>
             <h1 className="text-lg font-bold text-slate-900">
-              Welcome back, {firstName}! 👋
+              Keep Learning Smarter, {firstName}! 👋
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
               Learn any topic from YouTube, the smarter way.

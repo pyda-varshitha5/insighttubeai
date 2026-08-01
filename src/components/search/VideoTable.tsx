@@ -1,214 +1,152 @@
 "use client";
 
+import { ExternalLink } from "lucide-react";
 import Image from "next/image";
-import { ExternalLink, PlayCircle } from "lucide-react";
+import type { YouTubeVideo } from "./SearchPage";
 
-const videos = [
-  {
-    id: 1,
-    title: "React Hooks Tutorial for Beginners",
-    channel: "Programming with Mosh",
-    views: "2.3M views",
-    duration: "24:35",
-    thumbnail: "https://i.ytimg.com/vi/TNhaISOUy6Q/hqdefault.jpg",
-    url: "#",
-  },
-  {
-    id: 2,
-    title: "React Hooks Crash Course",
-    channel: "Traversy Media",
-    views: "1.8M views",
-    duration: "18:21",
-    thumbnail: "https://i.ytimg.com/vi/f687hBjwFcM/hqdefault.jpg",
-    url: "#",
-  },
-  {
-    id: 3,
-    title: "Master React Hooks in One Video",
-    channel: "Codevolution",
-    views: "1.2M views",
-    duration: "42:10",
-    thumbnail: "https://i.ytimg.com/vi/O6P86uwfdR0/hqdefault.jpg",
-    url: "#",
-  },
-  {
-    id: 4,
-    title: "React useEffect Explained",
-    channel: "Web Dev Simplified",
-    views: "980K views",
-    duration: "15:02",
-    thumbnail: "https://i.ytimg.com/vi/0ZJgIjIuY7U/hqdefault.jpg",
-    url: "#",
-  },
-  {
-    id: 5,
-    title: "React useState Complete Guide",
-    channel: "CodeWithHarry",
-    views: "850K views",
-    duration: "29:50",
-    thumbnail: "https://i.ytimg.com/vi/O6P86uwfdR0/hqdefault.jpg",
-    url: "#",
-  },
-  {
-    id: 6,
-    title: "React Hooks Interview Questions",
-    channel: "JavaScript Mastery",
-    views: "620K views",
-    duration: "20:11",
-    thumbnail: "https://i.ytimg.com/vi/f687hBjwFcM/hqdefault.jpg",
-    url: "#",
-  },
-  {
-    id: 7,
-    title: "Learn React Hooks Fast",
-    channel: "Academind",
-    views: "500K views",
-    duration: "16:45",
-    thumbnail: "https://i.ytimg.com/vi/TNhaISOUy6Q/hqdefault.jpg",
-    url: "#",
-  },
-  {
-    id: 8,
-    title: "React Custom Hooks",
-    channel: "PedroTech",
-    views: "420K views",
-    duration: "14:32",
-    thumbnail: "https://i.ytimg.com/vi/O6P86uwfdR0/hqdefault.jpg",
-    url: "#",
-  },
-  {
-    id: 9,
-    title: "Top React Hooks Tips",
-    channel: "Fireship",
-    views: "390K views",
-    duration: "9:40",
-    thumbnail: "https://i.ytimg.com/vi/f687hBjwFcM/hqdefault.jpg",
-    url: "#",
-  },
-  {
-    id: 10,
-    title: "React Hooks Best Practices",
-    channel: "freeCodeCamp.org",
-    views: "300K views",
-    duration: "35:12",
-    thumbnail: "https://i.ytimg.com/vi/TNhaISOUy6Q/hqdefault.jpg",
-    url: "#",
-  },
-];
+interface Props {
+  videos: YouTubeVideo[];
+  loading: boolean;
+  onPlay: (id: string) => void;
+}
 
-export default function VideoTable() {
-  return (
-    <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+function formatViews(views: string) {
+  const n = Number(views);
 
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-200 px-7 py-6">
+  if (n >= 1000000)
+    return (n / 1000000).toFixed(1).replace(".0", "") + "M views";
 
-        <div className="flex items-center gap-4">
+  if (n >= 1000)
+    return (n / 1000).toFixed(1).replace(".0", "") + "K views";
 
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-100">
-            <PlayCircle className="h-6 w-6 text-violet-600" />
-          </div>
+  return n + " views";
+}
 
-          <div>
+function formatDuration(duration: string) {
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
 
-            <h2 className="text-lg font-semibold text-slate-900">
-              Top 10 YouTube Videos
-            </h2>
+  if (!match) return "";
 
-            <p className="mt-1 text-sm text-slate-500">
-              Ranked by relevance
-            </p>
+  const h = match[1] || "";
+  const m = match[2] || "0";
+  const s = match[3] || "0";
 
-          </div>
+  if (h)
+    return `${h}:${m.padStart(2, "0")}:${s.padStart(2, "0")}`;
 
-        </div>
+  return `${m}:${s.padStart(2, "0")}`;
+}
 
+export default function VideoTable({
+  videos,
+  loading,
+  onPlay,
+}: Props) {
+  if (loading)
+    return (
+      <div className="rounded-2xl bg-white p-10 text-center shadow">
+        Loading...
       </div>
+    );
 
-      {/* Table Header */}
+  if (videos.length === 0)
+    return (
+      <div className="rounded-2xl bg-white p-10 text-center shadow">
+        No videos found.
+      </div>
+    );
 
-      <div className="grid grid-cols-12 border-b border-slate-100 bg-slate-50 px-7 py-4 text-sm font-semibold text-slate-600">
+  return (
+    <div className="overflow-hidden rounded-3xl bg-white shadow">
 
-        <div className="col-span-1">
-          #
-        </div>
+      <div className="grid grid-cols-12 border-b bg-gray-50 px-6 py-4 text-sm font-semibold text-gray-600">
 
-        <div className="col-span-6">
-          Video
-        </div>
+        <div className="col-span-1">#</div>
 
-        <div className="col-span-2">
-          Views
-        </div>
+        <div className="col-span-7">Video</div>
 
-        <div className="col-span-3 text-right">
+        <div className="col-span-2">Views</div>
+
+        <div className="col-span-2 text-right">
           Action
         </div>
 
       </div>
 
-      {/* Rows */}
-            {videos.map((video) => (
+      {videos.map((video, index) => (
+
         <div
           key={video.id}
-          className="grid grid-cols-12 items-center border-b border-slate-100 px-7 py-5 transition-all duration-200 hover:bg-slate-50"
+          className="grid grid-cols-12 items-center border-b px-6 py-5 hover:bg-gray-50"
         >
-          {/* Number */}
+
           <div className="col-span-1">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-sm font-semibold text-violet-700">
-              {video.id}
+
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 text-violet-700 font-semibold">
+              {index + 1}
             </div>
+
           </div>
 
-          {/* Video */}
-          <div className="col-span-6 flex items-center gap-4">
-            <div className="relative h-16 w-28 overflow-hidden rounded-xl border border-slate-200">
-              <Image
-                src={video.thumbnail}
-                alt={video.title}
-                fill
-                className="object-cover"
-                unoptimized
-              />
-            </div>
+          <div className="col-span-7 flex items-center gap-4">
 
-            <div className="min-w-0">
-              <h3 className="truncate text-base font-semibold text-slate-900">
-                {video.title}
+<button
+  onClick={() => onPlay(video.id)}
+  className="relative h-20 w-36 overflow-hidden rounded-xl border border-gray-200 transition hover:scale-[1.02]"
+>
+  <Image
+    src={video.thumbnail}
+    alt={video.title}
+    fill
+    unoptimized
+    className="object-cover"
+  />
+
+  <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition hover:opacity-100">
+    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-white">
+      ▶
+    </div>
+  </div>
+
+  <div className="absolute bottom-1 right-1 rounded bg-black/80 px-1 text-[10px] text-white">
+    {formatDuration(video.duration)}
+  </div>
+</button>
+
+            <div>
+
+<h3 className="line-clamp-2 text-[15px] font-semibold leading-6 text-gray-900">                {video.title}
               </h3>
 
-              <p className="mt-1 text-sm text-slate-500">
-                {video.channel}
+<p className="mt-1 text-sm text-gray-500">                {video.channel}
               </p>
 
-              <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-500">
-                {video.duration}
-              </span>
             </div>
+
           </div>
 
-          {/* Views */}
-          <div className="col-span-2">
-            <span className="text-sm font-medium text-slate-600">
-              {video.views}
-            </span>
+<div className="col-span-2">            
+  <span className="text-sm font-medium text-gray-700">
+  {formatViews(video.views)}
+</span>
           </div>
 
-          {/* Action */}
-          <div className="col-span-3 flex justify-end">
-            <a
-              href={video.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-xl border border-violet-300 bg-white px-4 py-2 text-sm font-medium text-violet-600 transition-all duration-200 hover:border-violet-500 hover:bg-violet-50"
-            >
-              Watch on YouTube
+          <div className="col-span-2 flex justify-end">
 
-              <ExternalLink size={15} />
-            </a>
+            <button
+  onClick={() => onPlay(video.id)}
+  className="inline-flex items-center gap-2 rounded-xl border border-violet-300 bg-white px-5 py-2.5 text-sm font-medium text-violet-600 transition hover:bg-violet-50"
+>
+  Watch
+  <ExternalLink className="h-4 w-4" />
+</button>
+
           </div>
+
         </div>
+
       ))}
-          </div>
+
+    </div>
   );
 }

@@ -1,47 +1,60 @@
-import { Search } from "lucide-react";
+// src/components/search/RecentSearches.tsx
+"use client";
 
-const RECENT_SEARCHES = [
-  { id: 1, title: "React Hooks Tutorial", time: "2 hours ago" },
-  { id: 2, title: "JavaScript Full Course", time: "1 day ago" },
-  { id: 3, title: "Machine Learning Basics", time: "2 days ago" },
-  { id: 4, title: "System Design Interview", time: "3 days ago" },
-  { id: 5, title: "Python for Beginners", time: "4 days ago" },
+import { Clock } from "lucide-react";
+
+interface RecentSearchItem {
+  title: string;
+  timeAgo: string;
+}
+
+interface RecentSearchesProps {
+  onSelect: (term: string) => void;
+  items?: RecentSearchItem[];
+}
+
+const DEFAULT_RECENT_SEARCHES: RecentSearchItem[] = [
+  { title: "React Hooks Tutorial", timeAgo: "2 hours ago" },
+  { title: "JavaScript Full Course", timeAgo: "1 day ago" },
+  { title: "Machine Learning Basics", timeAgo: "2 days ago" },
+  { title: "System Design Interview", timeAgo: "3 days ago" },
+  { title: "Python for Beginners", timeAgo: "4 days ago" },
 ];
 
-export default function RecentSearches() {
+export default function RecentSearches({
+  onSelect,
+  items = DEFAULT_RECENT_SEARCHES,
+}: RecentSearchesProps) {
   return (
-    <div className="w-full rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
-      {/* Header */}
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900 sm:text-base">
+    <div className="rounded-2xl border border-gray-200 bg-white p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="text-base font-semibold text-gray-900">
           Recent Searches
         </h3>
         <button
           type="button"
-          className="text-xs font-medium text-violet-600 transition-colors hover:text-violet-700 sm:text-sm"
+          className="text-sm font-medium text-purple-600 hover:text-purple-700"
         >
           View all
         </button>
       </div>
 
-      {/* List */}
-      <ul className="divide-y divide-gray-100">
-        {RECENT_SEARCHES.map((item) => (
-          <li key={item.id}>
-            <div className="flex items-center justify-between gap-3 rounded-lg px-1 py-3 transition-colors hover:bg-gray-50 sm:px-2">
-              <div className="flex min-w-0 items-center gap-3">
-                <Search className="h-4 w-4 shrink-0 text-gray-400" />
-                <span className="truncate text-sm text-gray-700">
-                  {item.title}
-                </span>
-              </div>
-              <span className="shrink-0 text-xs text-gray-400 sm:text-sm">
-                {item.time}
-              </span>
+      <div className="flex flex-col divide-y divide-gray-100">
+        {items.map((item) => (
+          <button
+            key={item.title}
+            type="button"
+            onClick={() => onSelect(item.title)}
+            className="flex items-center justify-between py-3 text-left transition hover:bg-gray-50"
+          >
+            <div className="flex items-center gap-3">
+              <Clock className="h-4 w-4 text-gray-400" />
+              <span className="text-sm text-gray-800">{item.title}</span>
             </div>
-          </li>
+            <span className="text-xs text-gray-400">{item.timeAgo}</span>
+          </button>
         ))}
-      </ul>
+      </div>
     </div>
   );
 }

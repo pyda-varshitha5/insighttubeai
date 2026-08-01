@@ -1,36 +1,44 @@
+// src/components/search/SuggestedSearches.tsx
+"use client";
+
 import { Search } from "lucide-react";
 
-const SUGGESTED_SEARCHES = [
-  { id: 1, title: "How does Blockchain work?" },
-  { id: 2, title: "Explain HTTP vs HTTPS" },
-  { id: 3, title: "Next.js 14 Crash Course" },
-  { id: 4, title: "What is Generative AI?" },
-  { id: 5, title: "SQL Tutorial for Beginners" },
+interface SuggestedSearchesProps {
+  onSelect: (term: string) => void;
+  items?: string[];
+}
+
+const DEFAULT_SUGGESTED_SEARCHES: string[] = [
+  "How does Blockchain work?",
+  "Explain HTTP vs HTTPS",
+  "Next.js 14 Crash Course",
+  "What is Generative AI?",
+  "SQL Tutorial for Beginners",
 ];
 
-export default function SuggestedSearches() {
+export default function SuggestedSearches({
+  onSelect,
+  items = DEFAULT_SUGGESTED_SEARCHES,
+}: SuggestedSearchesProps) {
   return (
-    <div className="w-full rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
-      {/* Header */}
-      <div className="mb-2">
-        <h3 className="text-sm font-semibold text-gray-900 sm:text-base">
-          You can try
-        </h3>
-      </div>
+    <div className="rounded-2xl border border-gray-200 bg-white p-6">
+      <h3 className="mb-4 text-base font-semibold text-gray-900">
+        You can try
+      </h3>
 
-      {/* List */}
-      <ul className="flex flex-col gap-2">
-        {SUGGESTED_SEARCHES.map((item) => (
-          <li key={item.id}>
-            <div className="flex cursor-pointer items-center gap-3 rounded-xl bg-gray-50 px-3 py-3 transition-colors hover:bg-violet-50 sm:px-4">
-              <Search className="h-4 w-4 shrink-0 text-gray-400" />
-              <span className="truncate text-sm text-gray-700">
-                {item.title}
-              </span>
-            </div>
-          </li>
+      <div className="flex flex-col divide-y divide-gray-100">
+        {items.map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => onSelect(item)}
+            className="flex items-center gap-3 py-3 text-left transition hover:bg-gray-50"
+          >
+            <Search className="h-4 w-4 text-purple-500" />
+            <span className="text-sm text-gray-800">{item}</span>
+          </button>
         ))}
-      </ul>
+      </div>
     </div>
   );
 }
