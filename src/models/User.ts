@@ -29,6 +29,76 @@ const UserSchema = new Schema(
       default: "",
     },
 
+    // =========================
+    // Profile Settings
+    // =========================
+
+    phone: {
+      type: String,
+      default: "",
+    },
+
+    bio: {
+      type: String,
+      default: "",
+    },
+
+    // =========================
+    // Preferences
+    // =========================
+
+    preferences: {
+      theme: {
+        type: String,
+        default: "light",
+      },
+
+      language: {
+        type: String,
+        default: "English",
+      },
+
+      timezone: {
+        type: String,
+        default: "(GMT+05:30) Asia/Kolkata",
+      },
+
+      summaryLength: {
+        type: String,
+        default: "Medium",
+      },
+    },
+
+    // =========================
+    // Notification Settings
+    // =========================
+
+    notifications: {
+      emailNotifications: {
+        type: Boolean,
+        default: true,
+      },
+
+      summaryCompleted: {
+        type: Boolean,
+        default: true,
+      },
+
+      weeklyDigest: {
+        type: Boolean,
+        default: false,
+      },
+
+      productUpdates: {
+        type: Boolean,
+        default: true,
+      },
+    },
+
+    // =========================
+    // Existing Fields
+    // =========================
+
     recentSearches: [
       {
         type: String,
