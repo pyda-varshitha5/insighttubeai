@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ReadingProgress from "@/components/summary/ReadingProgress";
 import SummaryActions from "@/components/summary/SummaryActions";
@@ -168,10 +168,19 @@ const goBack = () => {
       <ReadingProgress />
 
       <div className="pl-1 sm:pl-2">
-        <SummaryActions markdown={data.markdown} title={data.title} />
+       <SummaryActions
+  markdown={data.markdown}
+  title={data.title}
+
+/>
 
         <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_240px]">
-          <main className="min-w-0">
+        
+  <main
+    id="pdf-content"
+    className="min-w-0"
+  >
+
             <button
   type="button"
   onClick={goBack}
@@ -220,6 +229,7 @@ const goBack = () => {
               </section>
             )}
           </main>
+         
 
           <aside className="hidden lg:block">
             

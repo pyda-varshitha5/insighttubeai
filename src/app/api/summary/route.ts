@@ -176,7 +176,7 @@ Return ONLY markdown.
     const completion = await groq.chat.completions.create({
     model: "llama-3.1-8b-instant",
       temperature: 0.3,
-      max_tokens: 2500,
+      max_tokens: 5000,
       messages: [
         {
           role: "system",
@@ -214,7 +214,8 @@ Output ONLY Markdown.
     });
 
     const markdown = completion.choices[0]?.message?.content ?? "";
-
+console.log("Markdown Length:", markdown.length);
+console.log("Words:", markdown.split(/\s+/).length);
     return NextResponse.json({
       title: topic,
       subtitle: "AI Generated Study Guide",

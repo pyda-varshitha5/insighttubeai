@@ -1,6 +1,5 @@
 "use client";
-
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import SearchHero from "./SearchHero";
 import SearchResultsHeader from "./SearchResultsHeader";
 import SearchActionCards from "./SearchActionCards";
@@ -29,12 +28,25 @@ export default function SearchPage() {
   const [searched, setSearched] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
 const searchParams = useSearchParams();
-
+const lastSearchRef = useRef("");
  const handleSearch = useCallback(async (searchTerm?: string) => {
     
-  const q = searchTerm ?? query;
+  const q =
+  typeof searchTerm === "string"
+    ? searchTerm
+    : query;
 
-if (!q.trim()) return;
+const normalizedQuery = q.trim().toLowerCase();
+
+if (!normalizedQuery) return;
+
+// Prevent duplicate search
+if (lastSearchRef.current === normalizedQuery) {
+  console.log("Duplicate search skipped");
+  return;
+}
+
+lastSearchRef.current = normalizedQuery;
 
     setLoading(true);
 
@@ -43,9 +55,13 @@ if (!q.trim()) return;
         `/api/youtube/search?q=${encodeURIComponent(q)}`
       );
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch videos");
-      }
+       if (!response.ok) {
+  const error = await response.json();
+
+  console.error("API Error:", error);
+
+  throw new Error(error.error || "Failed to fetch videos");
+}
 
       const data = await response.json();
 
