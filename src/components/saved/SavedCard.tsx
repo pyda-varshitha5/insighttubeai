@@ -1,6 +1,10 @@
+"use client";
+
+import { useRouter } from "next/navigation";
 import { Bookmark, MoreVertical, LucideIcon } from "lucide-react";
 
 interface SavedCardProps {
+  id: string;
   icon: LucideIcon;
   iconGradient: string;
   iconColor: string;
@@ -10,9 +14,11 @@ interface SavedCardProps {
   date: string;
   time: string;
   isLast?: boolean;
+  onDelete?: (id: string) => void;
 }
 
 export default function SavedCard({
+  id,
   icon: Icon,
   iconGradient,
   iconColor,
@@ -22,14 +28,18 @@ export default function SavedCard({
   date,
   time,
   isLast = false,
+  onDelete,
 }: SavedCardProps) {
+  const router = useRouter();
+
   return (
     <div
-      className={`flex flex-col gap-4 px-6 py-5 transition-all duration-200 hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between sm:px-8 ${
+      onClick={() => router.push(`/summary/saved?id=${id}`)}
+      className={`cursor-pointer flex flex-col gap-4 px-6 py-5 transition-all duration-200 hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between sm:px-8 ${
         isLast ? "" : "border-b border-slate-100"
       }`}
     >
-      {/* Left side */}
+      {/* Left Side */}
       <div className="flex min-w-0 items-start gap-4">
         <div
           className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${iconGradient}`}
@@ -41,6 +51,7 @@ export default function SavedCard({
           <p className="truncate text-sm font-semibold text-slate-900">
             {title}
           </p>
+
           <p className="mt-1 line-clamp-2 text-sm text-slate-500">
             {description}
           </p>
@@ -49,6 +60,7 @@ export default function SavedCard({
             <span className="inline-flex items-center rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-600">
               Summary
             </span>
+
             <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
               {readTime}
             </span>
@@ -56,7 +68,7 @@ export default function SavedCard({
         </div>
       </div>
 
-      {/* Right side */}
+      {/* Right Side */}
       <div className="flex items-center justify-between gap-4 sm:justify-end sm:gap-6">
         <div className="text-right">
           <p className="text-xs text-slate-400">Saved on</p>
@@ -64,19 +76,29 @@ export default function SavedCard({
           <p className="text-xs text-slate-500">{time}</p>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div
+          className="flex items-center gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
           <button
             type="button"
-            className="cursor-pointer rounded-lg p-2 text-slate-400 transition-all duration-200 hover:bg-slate-100 hover:text-violet-600"
+            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-violet-600"
           >
-            <Bookmark className="h-4 w-4" />
+            <Bookmark className="h-4 w-4 fill-violet-600 text-violet-600" />
           </button>
-          <button
-            type="button"
-            className="cursor-pointer rounded-lg p-2 text-slate-400 transition-all duration-200 hover:bg-slate-100 hover:text-slate-600"
-          >
-            <MoreVertical className="h-4 w-4" />
-          </button>
+<button
+  type="button"
+  onClick={(e) => {
+    e.stopPropagation();
+
+    if (confirm("Remove this saved summary?")) {
+      onDelete?.(id);
+    }
+  }}
+  className="rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+>
+  <MoreVertical className="h-4 w-4" />
+</button>
         </div>
       </div>
     </div>

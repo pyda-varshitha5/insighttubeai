@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "../../../lib/mongodb";
 import SearchCache from "../../../models/SearchCache";
-
+import Progress from "../../../models/Progress";
 const API_KEY = process.env.YOUTUBE_API_KEY;
 
 console.log("API Key Loaded:", !!API_KEY);
@@ -12,15 +12,49 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const query = searchParams.get("q");
+const userId = searchParams.get("userId");
 
-    if (!query) {
-      return NextResponse.json(
-        { error: "Search query is required." },
-        { status: 400 }
-      );
-    }
+if (!query) {
+  return NextResponse.json(
+    { error: "Search query is required." },
+    { status: 400 }
+  );
+}
 
-    const normalizedQuery = query.toLowerCase().trim();
+const normalizedQuery = query.toLowerCase().trim();
+
+console.log("User ID:", userId);
+console.log("Query:", normalizedQuery);
+    if (userId) {
+  let progress = await Progress.findOne({ userId });
+
+  if (!progress) {
+    progress = new Progress({
+      userId,
+      searchedTopics: [],
+      totalSearches: 0,
+      totalSummaries: 0,
+      savedSummaries: 0,
+      timeSavedMinutes: 0,
+      quizzesCompleted: 0,
+      streak: 0,
+    });
+  }
+
+ console.log("Before Update:", progress.searchedTopics);
+
+if (!progress.searchedTopics.includes(normalizedQuery)) {
+  progress.searchedTopics.push(normalizedQuery);
+}
+
+progress.totalSearches = progress.searchedTopics.length;
+
+await progress.save();
+
+console.log("After Update:", progress.searchedTopics);
+console.log("Total Searches:", progress.totalSearches);
+}
+    
 
     // ==========================
     // Check MongoDB Cache
@@ -31,9 +65,12 @@ export async function GET(req: NextRequest) {
     });
 
     if (cached) {
-      console.log("Returning cached results");
-      return NextResponse.json(cached.videos);
-    }
+  console.log("Returning cached results");
+
+  
+
+  return NextResponse.json(cached.videos);
+}
 console.log("Cache Miss:", normalizedQuery);
     // ==========================
     // Check API Key

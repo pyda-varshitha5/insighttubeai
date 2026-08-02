@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ReadingProgress from "@/components/summary/ReadingProgress";
 import SummaryActions from "@/components/summary/SummaryActions";
-
+import { useAuth } from "@/context/AuthProvider";
 import MarkdownRenderer from "@/components/summary/MarkdownRenderer";
 import InterviewAccordion from "@/components/summary/InterviewAccordion";
 import {
@@ -91,6 +91,7 @@ function ErrorDoc({ message, onRetry }: { message: string; onRetry: () => void }
 
 export default function SummaryPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const searchParams = useSearchParams();
   const topic = searchParams.get("topic") ?? searchParams.get("q") ?? "";
 
@@ -106,10 +107,15 @@ export default function SummaryPage() {
 
     try {
       const response = await fetch("/api/summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic }),
-      });
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    topic,
+    userId: user?.uid,
+  }),
+});
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
@@ -117,12 +123,17 @@ export default function SummaryPage() {
       }
 
       const data = (await response.json()) as SummaryResponse;
-      setState({ status: "success", data });
+      setState({
+  status: "success",
+  data,
+});
+
+window.dispatchEvent(new Event("progress-updated"));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error occurred.";
       setState({ status: "error", message });
     }
-  }, [topic]);
+  }, [topic,user]);
 
   useEffect(() => {
     loadSummary();
@@ -146,6 +157,30 @@ export default function SummaryPage() {
     }
     return baseHeadings;
   }, [state, bodyWithoutInterview, interviewItems]);
+
+  const handleSave = async () => {
+  if (!user) return;
+
+  const response = await fetch("/api/saved", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      userId: user.uid,
+      title: data.title,
+      markdown: data.markdown,
+    }),
+  });
+
+  if (!response.ok) {
+    alert("Failed to save summary");
+    return;
+  }
+
+  // Refresh dashboard statistics
+  window.dispatchEvent(new Event("progress-updated"));
+};
 
 const goBack = () => {
   router.push(
@@ -171,7 +206,7 @@ const goBack = () => {
        <SummaryActions
   markdown={data.markdown}
   title={data.title}
-
+  onSave={handleSave}
 />
 
         <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_240px]">

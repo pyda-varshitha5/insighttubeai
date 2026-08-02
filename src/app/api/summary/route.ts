@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Groq from "groq-sdk";
+import connectDB from "../../lib/mongodb";
+import Progress from "../../models/Progress";
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY!,
@@ -7,7 +9,9 @@ const groq = new Groq({
 
 export async function POST(req: NextRequest) {
   try {
-    const { topic } = await req.json();
+    await connectDB();
+
+    const { topic, userId } = await req.json();
 
     if (!topic) {
       return NextResponse.json(
@@ -174,7 +178,7 @@ Return ONLY markdown.
 `;
 
     const completion = await groq.chat.completions.create({
-    model: "llama-3.1-8b-instant",
+      model: "llama-3.1-8b-instant",
       temperature: 0.3,
       max_tokens: 5000,
       messages: [
@@ -214,14 +218,66 @@ Output ONLY Markdown.
     });
 
     const markdown = completion.choices[0]?.message?.content ?? "";
-console.log("Markdown Length:", markdown.length);
-console.log("Words:", markdown.split(/\s+/).length);
+
+    console.log("Summary API");
+    console.log("Topic:", topic);
+    console.log("User:", userId);
+
+    // ==========================
+    // Update Progress
+    // ==========================
+
+    if (userId) {
+      const normalizedTopic = topic.toLowerCase().trim();
+
+      let progress = await Progress.findOne({ userId });
+
+      // Create progress if it doesn't exist
+      if (!progress) {
+        progress = new Progress({
+          userId,
+          searchedTopics: [],
+          generatedSummaries: [],
+          totalSearches: 0,
+          totalSummaries: 0,
+          savedSummaries: 0,
+          timeSavedMinutes: 0,
+          quizzesCompleted: 0,
+          streak: 0,
+        });
+      }
+
+      // Ensure array exists
+      if (!Array.isArray(progress.generatedSummaries)) {
+        progress.generatedSummaries = [];
+      }
+
+      // Add only unique summaries
+      if (!progress.generatedSummaries.includes(normalizedTopic)) {
+        progress.generatedSummaries.push(normalizedTopic);
+      }
+
+      // Update count
+      progress.totalSummaries = progress.generatedSummaries.length;
+
+      // Force mongoose to save new field
+      progress.markModified("generatedSummaries");
+
+      await progress.save();
+
+      console.log("Generated Summaries:", progress.generatedSummaries);
+      console.log("Total Summaries:", progress.totalSummaries);
+    }
+
     return NextResponse.json({
       title: topic,
       subtitle: "AI Generated Study Guide",
       difficulty: "Beginner",
       lastUpdated: new Date().toLocaleDateString(),
-      readingTime: Math.max(1, Math.ceil(markdown.split(/\s+/).length / 200)),
+      readingTime: Math.max(
+        1,
+        Math.ceil(markdown.split(/\s+/).length / 200)
+      ),
       markdown,
     });
   } catch (error) {

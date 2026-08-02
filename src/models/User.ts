@@ -56,6 +56,32 @@ const UserSchema = new Schema(
       type: Number,
       default: 0,
     },
+    analytics: {
+  totalSearches: {
+    type: Number,
+    default: 0,
+  },
+
+  videosViewed: {
+    type: Number,
+    default: 0,
+  },
+
+  summariesGenerated: {
+    type: Number,
+    default: 0,
+  },
+
+  savedSummariesCount: {
+    type: Number,
+    default: 0,
+  },
+
+  lastActive: {
+    type: Date,
+    default: Date.now,
+  },
+},
   },
   {
     timestamps: true,

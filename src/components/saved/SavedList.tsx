@@ -1,72 +1,96 @@
-import { Atom, Code2, Braces, BrainCircuit } from "lucide-react";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthProvider";
+import { FileText } from "lucide-react";
 import SavedCard from "./SavedCard";
 
-const SAVED_ITEMS = [
-  {
-    id: 1,
-    icon: Atom,
-    iconGradient: "from-violet-100 to-violet-50",
-    iconColor: "text-violet-600",
-    title: "React Hooks Tutorial – Full Course for Beginners",
-    description:
-      "Comprehensive summary of React Hooks with examples and best practices.",
-    readTime: "12 min read",
-    date: "May 28, 2025",
-    time: "10:45 AM",
-  },
-  {
-    id: 2,
-    icon: Code2,
-    iconGradient: "from-blue-100 to-blue-50",
-    iconColor: "text-blue-600",
-    title: "Python Full Course – Learn Python in 4 Hours",
-    description:
-      "Complete Python crash course covering basics to advanced concepts.",
-    readTime: "18 min read",
-    date: "May 26, 2025",
-    time: "08:30 PM",
-  },
-  {
-    id: 3,
-    icon: Braces,
-    iconGradient: "from-yellow-100 to-yellow-50",
-    iconColor: "text-yellow-600",
-    title: "JavaScript Crash Course for Beginners",
-    description:
-      "Detailed overview of JavaScript fundamentals and key concepts.",
-    readTime: "15 min read",
-    date: "May 24, 2025",
-    time: "06:15 PM",
-  },
-  {
-    id: 4,
-    icon: BrainCircuit,
-    iconGradient: "from-indigo-100 to-indigo-50",
-    iconColor: "text-indigo-600",
-    title: "What is Artificial Intelligence? | Full Explanation",
-    description:
-      "In-depth explanation of AI, its types, applications, and future scope.",
-    readTime: "10 min read",
-    date: "May 22, 2025",
-    time: "11:20 AM",
-  },
-];
+interface SavedSummary {
+  _id: string;
+  title: string;
+  markdown: string;
+  createdAt: string;
+}
 
 export default function SavedList() {
+  const { user } = useAuth();
+
+  const [savedItems, setSavedItems] = useState<SavedSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchSaved = async () => {
+      try {
+        const res = await fetch(`/api/saved?userId=${user.uid}`);
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+        setSavedItems(data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSaved();
+  }, [user]);
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl bg-white p-8 text-center">
+        Loading...
+      </div>
+    );
+  }
+
+  if (savedItems.length === 0) {
+    return (
+      <div className="rounded-2xl bg-white p-8 text-center text-gray-500">
+        No saved summaries yet.
+      </div>
+    );
+  }
+const handleDelete = async (id: string) => {
+  try {
+    const res = await fetch(`/api/saved/${id}`, {
+      method: "DELETE",
+    });
+
+    if (!res.ok) return;
+
+    setSavedItems((prev) => prev.filter((item) => item._id !== id));
+
+    window.dispatchEvent(new Event("progress-updated"));
+  } catch (err) {
+    console.error(err);
+  }
+};
   return (
-    <div className="w-full rounded-2xl border border-slate-100 bg-white shadow-sm transition-all duration-200 hover:shadow-md">
-      {SAVED_ITEMS.map((item, index) => (
-        <SavedCard
-          key={item.id}
-          icon={item.icon}
-          iconGradient={item.iconGradient}
-          iconColor={item.iconColor}
+    <div className="w-full rounded-2xl border border-slate-100 bg-white shadow-sm">
+      {savedItems.map((item, index) => (
+       <SavedCard
+  id={item._id}
+  onDelete={handleDelete}
+          key={item._id}
+          icon={FileText}
+          iconGradient="from-violet-100 to-violet-50"
+          iconColor="text-violet-600"
           title={item.title}
-          description={item.description}
-          readTime={item.readTime}
-          date={item.date}
-          time={item.time}
-          isLast={index === SAVED_ITEMS.length - 1}
+          description={item.markdown.slice(0, 120) + "..."}
+          readTime={`${Math.max(
+            1,
+            Math.ceil(item.markdown.split(/\s+/).length / 200)
+          )} min read`}
+          date={new Date(item.createdAt).toLocaleDateString()}
+          time={new Date(item.createdAt).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+          isLast={index === savedItems.length - 1}
         />
       ))}
     </div>

@@ -53,11 +53,25 @@ export async function registerUser(
       password
     );
 
-  await updateProfile(userCredential.user, {
-    displayName: `${firstName} ${lastName}`.trim(),
-  });
+ await updateProfile(userCredential.user, {
+  displayName: `${firstName} ${lastName}`.trim(),
+});
 
-  return userCredential;
+console.log("User created:", userCredential.user.uid);
+
+const response = await fetch("/api/progress/init", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    userId: userCredential.user.uid,
+  }),
+});
+
+console.log("Progress API status:", response.status);
+
+return userCredential;
 }
 
 /* ---------------- Login ---------------- */

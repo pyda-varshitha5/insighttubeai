@@ -9,6 +9,7 @@ import SuggestedSearches from "./SuggestedSearches";
 import VideoTable from "./VideoTable";
 import VideoPlayer from "./VideoPlayer";
 import { useSearchParams } from "next/navigation";
+import { useAuth } from "@/context/AuthProvider";
 export interface YouTubeVideo {
   id: string;
   title: string;
@@ -22,12 +23,14 @@ export interface YouTubeVideo {
 }
 
 export default function SearchPage() {
+  
   const [query, setQuery] = useState("");
   const [videos, setVideos] = useState<YouTubeVideo[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
 const searchParams = useSearchParams();
+const { user } = useAuth();
 const lastSearchRef = useRef("");
  const handleSearch = useCallback(async (searchTerm?: string) => {
     
@@ -51,9 +54,9 @@ lastSearchRef.current = normalizedQuery;
     setLoading(true);
 
     try {
-      const response = await fetch(
-        `/api/youtube/search?q=${encodeURIComponent(q)}`
-      );
+     const response = await fetch(
+  `/api/youtube/search?q=${encodeURIComponent(q)}&userId=${user?.uid}`
+);
 
        if (!response.ok) {
   const error = await response.json();
@@ -71,6 +74,10 @@ console.log("Videos:", data);
 setQuery(q);
 setVideos(data);
 setSearched(true);
+
+window.dispatchEvent(
+  new Event("progress-updated")
+);
     } catch (error) {
       console.error(error);
       setVideos([]);
