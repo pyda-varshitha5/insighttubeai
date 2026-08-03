@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "../../../lib/mongodb";
 import SearchCache from "../../../models/SearchCache";
 import Progress from "../../../models/Progress";
+console.log("YOUTUBE SEARCH API LOADED");
 const API_KEY = process.env.YOUTUBE_API_KEY;
 
 console.log("API Key Loaded:", !!API_KEY);
@@ -209,15 +210,13 @@ console.log("Cache Miss:", normalizedQuery);
 
     return NextResponse.json(videos);
   } catch (error) {
-    console.error(error);
+    console.error("API ERROR:", error);
 
     return NextResponse.json(
       {
-        error: "Internal Server Error",
+        error: error instanceof Error ? error.message : "Unknown Error",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
-  }
+}
 }
