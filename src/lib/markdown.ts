@@ -128,33 +128,44 @@ export function estimateReadingTime(markdown: string): number {
  * its `### Q...` subheadings into structured question/answer pairs so it
  * can be rendered as a collapsible accordion instead of raw markdown.
  */
-export function parseInterviewQuestions(markdown: string): InterviewItem[] {
+export function parseInterviewQuestions(
+  markdown?: string
+): InterviewItem[] {
+  if (!markdown) return [];
+
   const sectionMatch = markdown.match(
-    /^##\s+Interview Questions\s*\n([\s\S]*?)(?=\n##\s+|$)/m
+    /##\s+Interview Questions\s*\n([\s\S]*?)(?=\n##\s+|$)/m
   );
+
   if (!sectionMatch) return [];
 
-  const sectionBody = sectionMatch[1];
-  const parts = sectionBody.split(/\n(?=###\s+)/g).filter((part) => part.trim().startsWith("###"));
+  const section = sectionMatch[1];
+
+  const parts = section.split(/^###\s+/gm).filter(Boolean);
 
   return parts.map((part) => {
-    const lines = part.split("\n");
-    const heading = lines[0].replace(/^###\s+/, "").trim();
+    const lines = part.trim().split("\n");
+
+    const question = lines[0].trim();
+
     const answer = lines.slice(1).join("\n").trim();
 
-    let level: InterviewItem["level"] = "General";
-    const lower = heading.toLowerCase();
-    if (lower.includes("beginner")) level = "Beginner";
-    else if (lower.includes("intermediate")) level = "Intermediate";
-    else if (lower.includes("advanced")) level = "Advanced";
-
-    const question = heading.replace(/^(Q\d+\.?\s*)/i, "").trim();
-
-    return { level, question, answer };
+    return {
+      level: "General",
+      question,
+      answer,
+    };
   });
 }
 
 /** Removes the Interview Questions section from the body so it isn't rendered twice. */
-export function stripInterviewSection(markdown: string): string {
-  return markdown.replace(/^##\s+Interview Questions\s*\n[\s\S]*?(?=\n##\s+|$)/m, "");
+export function stripInterviewSection(
+  markdown?: string
+): string {
+  if (!markdown) return "";
+
+  return markdown.replace(
+    /##\s+Interview Questions\s*[\s\S]*?(?=\n##\s+|$)/m,
+    ""
+  );
 }

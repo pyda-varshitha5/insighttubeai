@@ -10,6 +10,7 @@ import {
   Loader2,
   Check,
 } from "lucide-react";
+import { Presentation } from "@/types/presentation";
 
 interface SummaryActionsProps {
   title: string;
@@ -97,17 +98,18 @@ export default function SummaryActions({
   }, [isExporting, title, markdown]);
 
   const handleGeneratePpt = useCallback(async () => {
-    if (isGeneratingPpt) return;
-    setIsGeneratingPpt(true);
-    try {
-      if (onGeneratePpt) {
-        await onGeneratePpt();
-      }
-    } finally {
-      setIsGeneratingPpt(false);
-    }
-  }, [isGeneratingPpt, onGeneratePpt]);
+  if (isGeneratingPpt) return;
 
+  setIsGeneratingPpt(true);
+
+  try {
+    if (onGeneratePpt) {
+      await onGeneratePpt();
+    }
+  } finally {
+    setIsGeneratingPpt(false);
+  }
+}, [isGeneratingPpt, onGeneratePpt]);
   const handleCopySummary = useCallback(async () => {
     try {
       if (onCopySummary) {

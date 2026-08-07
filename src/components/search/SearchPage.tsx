@@ -107,15 +107,16 @@ window.dispatchEvent(
           />
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <RecentSearches
+           <RecentSearches
   onSelect={(text) => {
     setQuery(text);
-    handleSearch();
+    handleSearch(text);
   }}
-/><SuggestedSearches
+/>
+<SuggestedSearches
   onSelect={(text) => {
     setQuery(text);
-    handleSearch();
+    handleSearch(text);
   }}
 />
           </div>

@@ -7,6 +7,7 @@ import SummaryActions from "@/components/summary/SummaryActions";
 import { useAuth } from "@/context/AuthProvider";
 import MarkdownRenderer from "@/components/summary/MarkdownRenderer";
 import InterviewAccordion from "@/components/summary/InterviewAccordion";
+
 import {
   extractHeadings,
   parseInterviewQuestions,
@@ -197,16 +198,50 @@ const goBack = () => {
   }
 
   const { data } = state;
+const handleGeneratePpt = async () => {
+  try {
+    console.log("Generating AI Presentation...");
 
+    const response = await fetch("/api/ppt", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+  title: data.title,
+  markdown: data.markdown,
+})
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to generate presentation");
+    }
+
+    const presentation = await response.json();
+
+    console.log("Presentation:", presentation);
+
+    sessionStorage.setItem(
+      "generatedPresentation",
+      JSON.stringify(presentation)
+    );
+
+    router.push("/presentation");
+  } catch (error) {
+    console.error(error);
+    alert("Failed to generate presentation.");
+  }
+};
   return (
     <div className="min-h-screen bg-white">
       <ReadingProgress />
 
       <div className="pl-1 sm:pl-2">
-       <SummaryActions
+      <SummaryActions
   markdown={data.markdown}
   title={data.title}
   onSave={handleSave}
+  onGeneratePpt={handleGeneratePpt}
 />
 
         <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_240px]">
