@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "../../../lib/mongodb";
 import SearchCache from "../../../models/SearchCache";
 import Progress from "../../../models/Progress";
+import User from "@/models/User";
 console.log("YOUTUBE SEARCH API LOADED");
 const API_KEY = process.env.YOUTUBE_API_KEY;
 
@@ -26,6 +27,21 @@ const normalizedQuery = query.toLowerCase().trim();
 
 console.log("User ID:", userId);
 console.log("Query:", normalizedQuery);
+if (userId) {
+  await User.findOneAndUpdate(
+    { uid: userId },
+    {
+      $inc: {
+        "analytics.totalSearches": 1,
+      },
+      $set: {
+        "analytics.lastActive": new Date(),
+      },
+    }
+  );
+
+  console.log("User analytics updated");
+}
     if (userId) {
   let progress = await Progress.findOne({ userId });
 

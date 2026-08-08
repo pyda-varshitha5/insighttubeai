@@ -26,12 +26,63 @@ export async function signInWithGoogle() {
   const isMobile =
     /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
+  let userCredential;
+
   if (isMobile) {
     await signInWithRedirect(auth, googleProvider);
     return;
   }
 
-  return await signInWithPopup(auth, googleProvider);
+  userCredential = await signInWithPopup(
+    auth,
+    googleProvider
+  );
+
+  const user = userCredential.user;
+
+  // -----------------------------
+  // Sync Google user to MongoDB
+  // -----------------------------
+
+  const displayName = user.displayName || "";
+
+  const nameParts = displayName.trim().split(" ");
+
+  const firstName =
+    nameParts.shift() || "User";
+
+  const lastName =
+    nameParts.join(" ");
+
+  const response = await fetch("/api/user/sync", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      uid: user.uid,
+      firstName,
+      lastName,
+      email: user.email,
+      photoURL: user.photoURL,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.success) {
+    console.error(
+      "User sync failed:",
+      data
+    );
+  } else {
+    console.log(
+      "Google user saved to MongoDB:",
+      data.user
+    );
+  }
+
+  return userCredential;
 }
 
 export async function handleRedirectResult() {

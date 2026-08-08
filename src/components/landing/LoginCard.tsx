@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   User,
   ShieldCheck,
@@ -29,9 +29,28 @@ export default function LoginCard({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const router = useRouter();
-
+const [adminLoginError, setAdminLoginError] = useState("");
 const [loading, setLoading] = useState(false);
 const [error, setError] = useState("");
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+
+  if (params.get("adminError") === "unauthorized") {
+    setActiveTab("admin");
+    setError("You are not authorized to access the admin panel.");
+
+    window.history.replaceState({}, "", "/login");
+  }
+}, []);
+useEffect(() => {
+  const message = localStorage.getItem("adminLoginError");
+
+  if (message) {
+    setAdminLoginError(message);
+    setActiveTab("admin");
+    localStorage.removeItem("adminLoginError");
+  }
+}, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
@@ -51,13 +70,31 @@ const [error, setError] = useState("");
   try {
     setLoading(true);
 
-    await loginUser(email, password);
+    const userCredential = await loginUser(email, password);
 
-    if (activeTab === "admin") {
-      router.push("/admin/dashboard");
-    } else {
-      router.push("/dashboard");
-    }
+if (activeTab === "admin") {
+  const idToken = await userCredential.user.getIdToken();
+
+  const response = await fetch("/api/admin", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+    },
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.authorized) {
+    await userCredential.user.getIdToken(true);
+
+    setError("You are not authorized to access the admin panel.");
+    return;
+  }
+
+  router.push("/admin/dashboard");
+} else {
+  router.push("/dashboard");
+}
   } catch (error: any) {
     switch (error.code) {
       case "auth/invalid-credential":
@@ -85,14 +122,25 @@ const handleGoogleLogin = async () => {
     setLoading(true);
     setError("");
 
+    if (activeTab === "admin") {
+      localStorage.setItem("adminLoginIntent", "true");
+    } else {
+      localStorage.removeItem("adminLoginIntent");
+    }
+
     await signInWithGoogle();
 
-    if (activeTab === "admin") {
-      router.push("/admin/dashboard");
-    } else {
+    // Normal user Google login
+    if (activeTab === "user") {
       router.push("/dashboard");
     }
+
+    // For Admin Login:
+    // AuthProvider will verify the Firebase user
+    // against the allowed admin emails.
   } catch (error: any) {
+    localStorage.removeItem("adminLoginIntent");
+
     if (error.code !== "auth/cancelled-popup-request") {
       setError(error.message);
     }
@@ -129,8 +177,10 @@ const handleGoogleLogin = async () => {
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab("admin")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+onClick={() => {
+  setActiveTab("admin");
+  localStorage.setItem("adminLoginIntent", "true");
+}}              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === "admin"
                   ? "bg-white text-violet-600 shadow-sm"
                   : "text-slate-500"
@@ -140,7 +190,13 @@ const handleGoogleLogin = async () => {
               Admin Login
             </button>
           </div>
-
+{(error || adminLoginError) && (
+  <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+    <p className="text-center text-sm font-medium text-red-600">
+      ⚠️ {error || adminLoginError}
+    </p>
+  </div>
+)}
           <button
   type="button"
   onClick={handleGoogleLogin}
@@ -213,11 +269,7 @@ const handleGoogleLogin = async () => {
 </Link>
             </div>
 
-{error && (
-  <p className="text-center text-sm text-red-500">
-    {error}
-  </p>
-)}
+
             <button
               type="submit"
               className="w-full py-3 rounded-xl bg-violet-500 hover:bg-violet-600 transition-colors text-white text-sm font-semibold shadow-sm shadow-violet-200"
