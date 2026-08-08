@@ -32,68 +32,73 @@ export default function SearchPage() {
 const searchParams = useSearchParams();
 const { user } = useAuth();
 const lastSearchRef = useRef("");
- const handleSearch = useCallback(async (searchTerm?: string) => {
-    
-  const q =
-  typeof searchTerm === "string"
-    ? searchTerm
-    : query;
+ const handleSearch = useCallback(
+  async (searchTerm?: string) => {
+    const q = typeof searchTerm === "string" ? searchTerm : query;
 
-const normalizedQuery = q.trim().toLowerCase();
+    const normalizedQuery = q.trim().toLowerCase();
 
-if (!normalizedQuery) return;
+    if (!normalizedQuery) return;
 
-// Prevent duplicate search
-if (lastSearchRef.current === normalizedQuery) {
-  console.log("Duplicate search skipped");
-  return;
-}
+    // Wait until the user is available
+    if (!user?.uid) {
+      console.log("User not loaded yet. Search cancelled.");
+      return;
+    }
 
-lastSearchRef.current = normalizedQuery;
+    // Prevent duplicate search
+    if (lastSearchRef.current === normalizedQuery) {
+      console.log("Duplicate search skipped");
+      return;
+    }
+
+    lastSearchRef.current = normalizedQuery;
 
     setLoading(true);
 
     try {
-     const response = await fetch(
-  `/api/youtube/search?q=${encodeURIComponent(q)}&userId=${user?.uid}`
-);
+      const response = await fetch(
+        `/api/youtube/search?q=${encodeURIComponent(q)}&userId=${encodeURIComponent(
+          user.uid
+        )}`
+      );
 
-       if (!response.ok) {
-  const error = await response.json();
+      if (!response.ok) {
+        const error = await response.json();
 
-  console.error("API Error:", error);
+        console.error("API Error:", error);
 
-  throw new Error(error.error || "Failed to fetch videos");
-}
+        throw new Error(error.error || "Failed to fetch videos");
+      }
 
       const data = await response.json();
 
-console.log("API Response:", data);
-console.log("Videos:", data);
+      console.log("API Response:", data);
+      console.log("Videos:", data);
 
-setQuery(q);
-setVideos(data);
-setSearched(true);
+      setQuery(q);
+      setVideos(data);
+      setSearched(true);
 
-window.dispatchEvent(
-  new Event("progress-updated")
-);
+      window.dispatchEvent(new Event("progress-updated"));
     } catch (error) {
-      console.error(error);
+      console.error("Search error:", error);
       setVideos([]);
       setSearched(true);
     } finally {
       setLoading(false);
     }
-  }, [query]);
+  },
+  [query, user?.uid]
+);
   useEffect(() => {
   const topic = searchParams.get("topic");
   const results = searchParams.get("results");
 
-  if (topic && results === "true") {
+  if (topic && results === "true" && user?.uid) {
     handleSearch(topic);
   }
-}, [searchParams, handleSearch]);
+}, [searchParams, user?.uid, handleSearch]);
 
   return (
     <div className="space-y-6">
