@@ -1,7 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import {
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
+
 import ReadingProgress from "@/components/summary/ReadingProgress";
 import SummaryActions from "@/components/summary/SummaryActions";
 import { useAuth } from "@/context/AuthProvider";
@@ -14,6 +24,12 @@ import {
   stripInterviewSection,
 } from "@/lib/markdown";
 
+import {
+  ArrowLeft,
+  BadgeHelp,
+  Sparkles,
+} from "lucide-react";
+
 interface SummaryResponse {
   title: string;
   subtitle: string;
@@ -24,288 +40,716 @@ interface SummaryResponse {
 }
 
 type FetchState =
-  | { status: "loading" }
-  | { status: "success"; data: SummaryResponse }
-  | { status: "error"; message: string };
+  | {
+      status: "loading";
+    }
+  | {
+      status: "success";
+      data: SummaryResponse;
+    }
+  | {
+      status: "error";
+      message: string;
+    };
 
 const DIFFICULTY_STYLES: Record<string, string> = {
-  Beginner: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  Intermediate: "bg-amber-50 text-amber-700 border-amber-200",
-  Advanced: "bg-rose-50 text-rose-700 border-rose-200",
+  Beginner:
+    "bg-emerald-50 text-emerald-700 border-emerald-200",
+
+  Intermediate:
+    "bg-amber-50 text-amber-700 border-amber-200",
+
+  Advanced:
+    "bg-rose-50 text-rose-700 border-rose-200",
 };
+
+/* =========================================================
+   LOADING UI
+========================================================= */
 
 function LoadingDoc() {
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
-      <div className="mb-10 flex flex-col items-center justify-center gap-3 py-16 text-center">
-        <div className="relative h-12 w-12">
-          <div className="absolute inset-0 animate-spin rounded-full border-4 border-purple-100 border-t-purple-600" />
+    <div className="min-h-screen bg-white">
+
+      <div className="mx-auto max-w-6xl px-6 py-12">
+
+        <div className="mb-10">
+
+          <div className="mb-4 h-10 w-2/3 animate-pulse rounded bg-gray-100" />
+
+          <div className="h-4 w-1/3 animate-pulse rounded bg-gray-100" />
+
         </div>
-        <p className="text-[15px] font-medium text-gray-700">Generating documentation…</p>
-        <p className="text-sm text-gray-400">Building a complete study guide for this topic</p>
+
+        <div className="mb-10 flex gap-3">
+
+          <div className="h-8 w-24 animate-pulse rounded-full bg-gray-100" />
+
+          <div className="h-8 w-24 animate-pulse rounded-full bg-gray-100" />
+
+          <div className="h-8 w-32 animate-pulse rounded-full bg-gray-100" />
+
+        </div>
+
+        <div className="space-y-8">
+
+          {Array.from({ length: 4 }).map(
+            (_, index) => (
+              <div
+                key={index}
+                className="animate-pulse"
+              >
+
+                <div className="mb-4 h-6 w-56 rounded bg-gray-100" />
+
+                <div className="space-y-2.5">
+
+                  <div className="h-3 w-full rounded bg-gray-100" />
+
+                  <div className="h-3 w-11/12 rounded bg-gray-100" />
+
+                  <div className="h-3 w-4/5 rounded bg-gray-100" />
+
+                  <div className="h-3 w-3/4 rounded bg-gray-100" />
+
+                </div>
+
+              </div>
+            )
+          )}
+
+        </div>
+
       </div>
 
-      <div className="space-y-8">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <div key={index} className="animate-pulse">
-            <div className="mb-4 h-6 w-56 rounded bg-gray-100" />
-            <div className="space-y-2.5">
-              <div className="h-3 w-full rounded bg-gray-100" />
-              <div className="h-3 w-11/12 rounded bg-gray-100" />
-              <div className="h-3 w-4/5 rounded bg-gray-100" />
-              <div className="h-3 w-3/4 rounded bg-gray-100" />
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
 
-function ErrorDoc({ message, onRetry }: { message: string; onRetry: () => void }) {
+/* =========================================================
+   ERROR UI
+========================================================= */
+
+function ErrorDoc({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
   return (
-    <div className="mx-auto flex max-w-4xl flex-col items-center justify-center px-4 py-24 text-center sm:px-6">
-      <div className="w-full max-w-md rounded-2xl border border-rose-100 bg-rose-50/60 p-8">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-rose-100">
-          <svg className="h-6 w-6 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
-            />
-          </svg>
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-6">
+
+      <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+
+        <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
+          <span className="text-xl">!</span>
         </div>
-        <h2 className="mb-2 text-lg font-semibold text-gray-900">Couldn&apos;t generate this guide</h2>
-        <p className="mb-6 text-sm text-gray-500">{message}</p>
+
+        <h2 className="text-xl font-bold text-gray-900">
+          Couldn't generate this guide
+        </h2>
+
+        <p className="mt-3 text-sm leading-6 text-gray-500">
+          {message}
+        </p>
+
         <button
           type="button"
           onClick={onRetry}
-          className="rounded-lg bg-purple-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-purple-700"
+          className="mt-6 rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-purple-700"
         >
           Retry
         </button>
+
       </div>
+
     </div>
   );
 }
 
+/* =========================================================
+   SUMMARY PAGE
+========================================================= */
+
 export default function SummaryPage() {
   const router = useRouter();
+
   const { user } = useAuth();
+
   const searchParams = useSearchParams();
-  const topic = searchParams.get("topic") ?? searchParams.get("q") ?? "";
 
-  const [state, setState] = useState<FetchState>({ status: "loading" });
+  const topic =
+    searchParams.get("topic") ??
+    searchParams.get("q") ??
+    "";
 
-  const loadSummary = useCallback(async () => {
-    if (!topic) {
-      setState({ status: "error", message: "No topic was provided." });
-      return;
-    }
+  const [state, setState] =
+    useState<FetchState>({
+      status: "loading",
+    });
 
-    setState({ status: "loading" });
+  const [quizLoading, setQuizLoading] =
+    useState(false);
 
-    try {
-      const response = await fetch("/api/summary", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    topic,
-    userId: user?.uid,
-  }),
-});
+  const [quizError, setQuizError] =
+    useState("");
 
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error ?? "Failed to generate documentation.");
+  /* =======================================================
+     LOAD SUMMARY
+  ======================================================= */
+
+  const loadSummary = useCallback(
+    async () => {
+      if (!topic) {
+        setState({
+          status: "error",
+          message: "No topic was provided.",
+        });
+
+        return;
       }
 
-      const data = (await response.json()) as SummaryResponse;
       setState({
-  status: "success",
-  data,
-});
+        status: "loading",
+      });
 
-window.dispatchEvent(new Event("progress-updated"));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unexpected error occurred.";
-      setState({ status: "error", message });
-    }
-  }, [topic,user]);
+      try {
+        const response = await fetch(
+          "/api/summary",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type": "application/json",
+            },
+
+            body: JSON.stringify({
+              topic,
+              userId: user?.uid,
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const payload =
+            await response
+              .json()
+              .catch(() => null);
+
+          throw new Error(
+            payload?.error ??
+              "Failed to generate documentation."
+          );
+        }
+
+        const data =
+          (await response.json()) as SummaryResponse;
+
+        setState({
+          status: "success",
+          data,
+        });
+
+        window.dispatchEvent(
+          new Event("progress-updated")
+        );
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Unexpected error occurred.";
+
+        setState({
+          status: "error",
+          message,
+        });
+      }
+    },
+    [topic, user]
+  );
 
   useEffect(() => {
     loadSummary();
   }, [loadSummary]);
 
+  /* =======================================================
+     MARKDOWN
+  ======================================================= */
+
   const bodyWithoutInterview = useMemo(() => {
-    if (state.status !== "success") return "";
-    return stripInterviewSection(state.data.markdown);
+    if (state.status !== "success") {
+      return "";
+    }
+
+    return stripInterviewSection(
+      state.data.markdown
+    );
   }, [state]);
 
   const interviewItems = useMemo(() => {
-    if (state.status !== "success") return [];
-    return parseInterviewQuestions(state.data.markdown);
+    if (state.status !== "success") {
+      return [];
+    }
+
+    return parseInterviewQuestions(
+      state.data.markdown
+    );
   }, [state]);
 
   const headings = useMemo(() => {
-    if (state.status !== "success") return [];
-    const baseHeadings = extractHeadings(bodyWithoutInterview);
-    if (interviewItems.length > 0) {
-      return [...baseHeadings, { id: "interview-questions", text: "Interview Questions", level: 2 as const }];
+    if (state.status !== "success") {
+      return [];
     }
+
+    const baseHeadings =
+      extractHeadings(bodyWithoutInterview);
+
+    if (interviewItems.length > 0) {
+      return [
+        ...baseHeadings,
+        {
+          id: "interview-questions",
+          text: "Interview Questions",
+          level: 2 as const,
+        },
+      ];
+    }
+
     return baseHeadings;
-  }, [state, bodyWithoutInterview, interviewItems]);
+  }, [
+    state,
+    bodyWithoutInterview,
+    interviewItems,
+  ]);
+
+  /* =======================================================
+     SAVE SUMMARY
+  ======================================================= */
 
   const handleSave = async () => {
-  if (!user) return;
+    if (!user || state.status !== "success") {
+      return;
+    }
 
-  const response = await fetch("/api/saved", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      userId: user.uid,
-      title: data.title,
-      markdown: data.markdown,
-    }),
-  });
+    const data = state.data;
 
-  if (!response.ok) {
-    alert("Failed to save summary");
-    return;
-  }
+    const response = await fetch(
+      "/api/saved",
+      {
+        method: "POST",
 
-  // Refresh dashboard statistics
-  window.dispatchEvent(new Event("progress-updated"));
-};
+        headers: {
+          "Content-Type": "application/json",
+        },
 
-const goBack = () => {
-  router.push(
-    `/search?topic=${encodeURIComponent(topic)}&results=true`
-  );
-};
+        body: JSON.stringify({
+          userId: user.uid,
+          title: data.title,
+          markdown: data.markdown,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      alert("Failed to save summary");
+      return;
+    }
+
+    window.dispatchEvent(
+      new Event("progress-updated")
+    );
+  };
+
+  /* =======================================================
+     BACK TO SEARCH
+  ======================================================= */
+
+  const goBack = () => {
+    router.push(
+      `/search?topic=${encodeURIComponent(
+        topic
+      )}&results=true`
+    );
+  };
+
+  /* =======================================================
+     GENERATE PPT
+  ======================================================= */
+
+  const handleGeneratePpt = async () => {
+    if (state.status !== "success") {
+      return;
+    }
+
+    const data = state.data;
+
+    try {
+      console.log(
+        "Generating AI Presentation..."
+      );
+
+      const response = await fetch(
+        "/api/ppt",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+          },
+
+          body: JSON.stringify({
+            title: data.title,
+            markdown: data.markdown,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          "Failed to generate presentation"
+        );
+      }
+
+      const presentation =
+        await response.json();
+
+      console.log(
+        "Presentation:",
+        presentation
+      );
+
+      sessionStorage.setItem(
+        "generatedPresentation",
+        JSON.stringify(presentation)
+      );
+
+      router.push("/presentation");
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        "Failed to generate presentation."
+      );
+    }
+  };
+
+  /* =======================================================
+     GENERATE QUIZ
+  ======================================================= */
+
+  const handleGenerateQuiz = async () => {
+    if (state.status !== "success") {
+      return;
+    }
+
+    const data = state.data;
+
+    try {
+      setQuizLoading(true);
+      setQuizError("");
+
+      /*
+       * Send the EXACT generated summary to Gemini.
+       * This makes the quiz based on what the student studied.
+       */
+
+      const response = await fetch(
+        "/api/quiz/generate",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+          },
+
+          body: JSON.stringify({
+            topic,
+            summary: data.markdown,
+          }),
+        }
+      );
+
+      const result =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error ??
+            "Failed to generate quiz."
+        );
+      }
+
+      /*
+       * Store the generated quiz temporarily.
+       * We don't put the entire summary/quiz into the URL.
+       */
+
+      sessionStorage.setItem(
+        "generatedQuiz",
+        JSON.stringify(result)
+      );
+
+      sessionStorage.setItem(
+        "quizTopic",
+        topic
+      );
+
+      /*
+       * Open the quiz page.
+       */
+
+      router.push(
+        `/quizzes?topic=${encodeURIComponent(
+          topic
+        )}`
+      );
+    } catch (error) {
+      console.error(
+        "Quiz generation error:",
+        error
+      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to generate quiz.";
+
+      setQuizError(message);
+
+      alert(message);
+    } finally {
+      setQuizLoading(false);
+    }
+  };
+
+  /* =======================================================
+     LOADING
+  ======================================================= */
 
   if (state.status === "loading") {
     return <LoadingDoc />;
   }
 
+  /* =======================================================
+     ERROR
+  ======================================================= */
+
   if (state.status === "error") {
-    return <ErrorDoc message={state.message} onRetry={loadSummary} />;
+    return (
+      <ErrorDoc
+        message={state.message}
+        onRetry={loadSummary}
+      />
+    );
   }
 
   const { data } = state;
-const handleGeneratePpt = async () => {
-  try {
-    console.log("Generating AI Presentation...");
 
-    const response = await fetch("/api/ppt", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-  title: data.title,
-  markdown: data.markdown,
-})
-    });
+  /* =======================================================
+     PAGE
+  ======================================================= */
 
-    if (!response.ok) {
-      throw new Error("Failed to generate presentation");
-    }
-
-    const presentation = await response.json();
-
-    console.log("Presentation:", presentation);
-
-    sessionStorage.setItem(
-      "generatedPresentation",
-      JSON.stringify(presentation)
-    );
-
-    router.push("/presentation");
-  } catch (error) {
-    console.error(error);
-    alert("Failed to generate presentation.");
-  }
-};
   return (
     <div className="min-h-screen bg-white">
+
       <ReadingProgress />
 
-      <div className="pl-1 sm:pl-2">
-      <SummaryActions
-  markdown={data.markdown}
-  title={data.title}
-  onSave={handleSave}
-  onGeneratePpt={handleGeneratePpt}
-/>
+      {/* =================================================
+          ACTIONS
+      ================================================== */}
 
-        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_240px]">
-        
-  <main
-    id="pdf-content"
-    className="min-w-0"
-  >
+      <div className="border-b border-gray-100">
 
-            <button
-  type="button"
-  onClick={goBack}
-  className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-gray-500 transition-colors hover:text-purple-600"
->
-  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M15 19l-7-7 7-7"
-    />
-  </svg>
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
 
-  Back to Results
-</button>
+          <button
+            type="button"
+            onClick={goBack}
+            className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 transition-colors hover:text-purple-600"
+          >
+            <ArrowLeft className="h-4 w-4" />
 
-            <h1 className="mb-2 text-4xl font-bold tracking-tight text-gray-900">{data.title}</h1>
-            <p className="mb-4 text-sm text-gray-400">{data.subtitle}</p>
+            Back to Results
+          </button>
 
-            <div className="mb-10 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-              <span
-                className={`rounded-full border px-2.5 py-1 font-medium ${DIFFICULTY_STYLES[data.difficulty]}`}
+          <SummaryActions
+            markdown={data.markdown}
+            title={data.title}
+            onSave={handleSave}
+            onGeneratePpt={
+              handleGeneratePpt
+            }
+          />
+
+        </div>
+
+      </div>
+
+      {/* =================================================
+          MAIN CONTENT
+      ================================================== */}
+
+      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_240px]">
+
+        {/* =================================================
+            DOCUMENT
+        ================================================== */}
+
+        <main>
+
+          <h1 className="mb-2 text-4xl font-bold tracking-tight text-gray-900">
+            {data.title}
+          </h1>
+
+          <p className="mb-4 text-sm text-gray-400">
+            {data.subtitle}
+          </p>
+
+          <div className="mb-10 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+
+            <span
+              className={`rounded-full border px-2.5 py-1 font-medium ${
+                DIFFICULTY_STYLES[
+                  data.difficulty
+                ]
+              }`}
+            >
+              {data.difficulty}
+            </span>
+
+            <span className="rounded-full border border-gray-200 px-2.5 py-1">
+              {data.readingTime} min read
+            </span>
+
+            <span className="rounded-full border border-gray-200 px-2.5 py-1">
+              Updated {data.lastUpdated}
+            </span>
+
+          </div>
+
+          <MarkdownRenderer
+            markdown={bodyWithoutInterview}
+          />
+
+          {/* =================================================
+              INTERVIEW QUESTIONS
+          ================================================== */}
+
+          {interviewItems.length > 0 && (
+            <section>
+
+              <h2
+                id="interview-questions"
+                className="mt-14 mb-4 scroll-mt-24 border-b border-gray-100 pb-3 text-2xl font-bold tracking-tight text-gray-900"
               >
-                {data.difficulty}
-              </span>
-              <span className="rounded-full border border-gray-200 px-2.5 py-1">
-                {data.readingTime} min read
-              </span>
-              <span className="rounded-full border border-gray-200 px-2.5 py-1">
-                Updated {data.lastUpdated}
-              </span>
+                Interview Questions
+              </h2>
+
+              <InterviewAccordion
+                items={interviewItems}
+              />
+
+            </section>
+          )}
+
+        </main>
+
+        {/* =================================================
+            RIGHT SIDEBAR
+        ================================================== */}
+
+        <aside className="hidden lg:block">
+
+          <div className="sticky top-24 space-y-5">
+
+            {/* =================================================
+                TABLE OF CONTENTS
+            ================================================== */}
+
+            {headings.length > 0 && (
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+
+                <h3 className="mb-4 text-sm font-semibold text-gray-900">
+                  On this page
+                </h3>
+
+                <div className="space-y-2">
+
+                  {headings.map(
+                    (heading) => (
+                      <a
+                        key={heading.id}
+                        href={`#${heading.id}`}
+                        className="block text-xs leading-5 text-gray-500 transition hover:text-purple-600"
+                      >
+                        {heading.text}
+                      </a>
+                    )
+                  )}
+
+                </div>
+
+              </div>
+            )}
+
+            {/* =================================================
+                QUIZ CARD
+            ================================================== */}
+
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
+
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100">
+
+                <BadgeHelp className="h-5 w-5 text-emerald-600" />
+
+              </div>
+
+              <h3 className="text-sm font-bold text-gray-900">
+                Test your understanding
+              </h3>
+
+              <p className="mt-2 text-xs leading-5 text-gray-500">
+                Take a quiz based on this generated summary.
+              </p>
+
+              {quizError && (
+                <p className="mt-3 text-xs text-red-500">
+                  {quizError}
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={handleGenerateQuiz}
+                disabled={quizLoading}
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+
+                {quizLoading ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+
+                    Generate Quiz
+                  </>
+                )}
+
+              </button>
+
             </div>
 
-            <MarkdownRenderer markdown={bodyWithoutInterview} />
+          </div>
 
-            {interviewItems.length > 0 && (
-              <section>
-                <h2
-                  id="interview-questions"
-                  className="mt-14 mb-4 scroll-mt-24 border-b border-gray-100 pb-3 text-2xl font-bold tracking-tight text-gray-900"
-                >
-                  Interview Questions
-                </h2>
-                <InterviewAccordion items={interviewItems} />
-              </section>
-            )}
-          </main>
-         
+        </aside>
 
-          <aside className="hidden lg:block">
-            
-          </aside>
-        </div>
       </div>
+
     </div>
   );
 }
