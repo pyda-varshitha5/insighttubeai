@@ -104,25 +104,56 @@ export async function registerUser(
       password
     );
 
- await updateProfile(userCredential.user, {
-  displayName: `${firstName} ${lastName}`.trim(),
-});
+  const user = userCredential.user;
 
-console.log("User created:", userCredential.user.uid);
+  await updateProfile(user, {
+    displayName: `${firstName} ${lastName}`.trim(),
+  });
 
-const response = await fetch("/api/progress/init", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    userId: userCredential.user.uid,
-  }),
-});
+  console.log("User created:", user.uid);
 
-console.log("Progress API status:", response.status);
+  // Sync user to MongoDB
+  const response = await fetch("/api/user/sync", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      uid: user.uid,
+      firstName,
+      lastName,
+      email: user.email,
+      photoURL: user.photoURL || "",
+    }),
+  });
 
-return userCredential;
+  const data = await response.json();
+
+  console.log("User sync status:", response.status);
+
+  if (!response.ok || !data.success) {
+    console.error("User sync failed:", data);
+  } else {
+    console.log("User saved to MongoDB:", data.user);
+  }
+
+  // Initialize progress
+  const progressResponse = await fetch("/api/progress/init", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      userId: user.uid,
+    }),
+  });
+
+  console.log(
+    "Progress API status:",
+    progressResponse.status
+  );
+
+  return userCredential;
 }
 
 /* ---------------- Login ---------------- */

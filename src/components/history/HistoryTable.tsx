@@ -1,88 +1,50 @@
-import { Bookmark, MoreVertical, FileText, Search } from "lucide-react";
+"use client";
 
-interface HistoryRow {
-  id: number;
+import { useState } from "react";
+import {
+  Bookmark,
+  BookmarkCheck,
+  Trash2,
+  FileText,
+  Search,
+  ExternalLink,
+  Loader2,
+  
+X,
+} from "lucide-react";
+
+export interface HistoryRow {
+  id: string | number;
   title: string;
   description: string;
   type: "Summary" | "Search";
   date: string;
   time: string;
+  createdAt?: string;
   iconBg: string;
   iconText: string;
 }
 
-const HISTORY_ROWS: HistoryRow[] = [
-  {
-    id: 1,
-    title: "React Hooks Tutorial – Full Course for Beginners",
-    description:
-      "Comprehensive summary of React Hooks with examples and best practices.",
-    type: "Summary",
-    date: "May 28, 2025",
-    time: "10:45 AM",
-    iconBg: "from-violet-100 to-violet-50",
-    iconText: "text-violet-600",
-  },
-  {
-    id: 2,
-    title: "Python Full Course – Learn Python in 4 Hours",
-    description:
-      "Complete Python crash course covering basics to advanced concepts.",
-    type: "Summary",
-    date: "May 26, 2025",
-    time: "08:30 PM",
-    iconBg: "from-blue-100 to-blue-50",
-    iconText: "text-blue-600",
-  },
-  {
-    id: 3,
-    title: "JavaScript Crash Course for Beginners",
-    description: "Detailed overview of JavaScript fundamentals and key concepts.",
-    type: "Summary",
-    date: "May 24, 2025",
-    time: "06:15 PM",
-    iconBg: "from-yellow-100 to-yellow-50",
-    iconText: "text-yellow-600",
-  },
-  {
-    id: 4,
-    title: "What is Artificial Intelligence? | Full Explanation",
-    description:
-      "In-depth explanation of AI, its types, applications, and future scope.",
-    type: "Summary",
-    date: "May 22, 2025",
-    time: "11:20 AM",
-    iconBg: "from-indigo-100 to-indigo-50",
-    iconText: "text-indigo-600",
-  },
-  {
-    id: 5,
-    title: "SQL Tutorial for Beginners",
-    description:
-      "Learn SQL basics, queries, joins, and database management step by step.",
-    type: "Summary",
-    date: "May 20, 2025",
-    time: "09:10 PM",
-    iconBg: "from-sky-100 to-sky-50",
-    iconText: "text-sky-600",
-  },
-  {
-    id: 6,
-    title: "Machine Learning Basics",
-    description: "Search query",
-    type: "Search",
-    date: "May 19, 2025",
-    time: "07:45 PM",
-    iconBg: "from-slate-100 to-slate-50",
-    iconText: "text-slate-500",
-  },
-];
+interface HistoryTableProps {
+  rows: HistoryRow[];
 
-function TypeBadge({ type }: { type: HistoryRow["type"] }) {
+  onSave: (row: HistoryRow) => Promise<void>;
+  onDelete: (row: HistoryRow) => Promise<void>;
+  onOpen: (row: HistoryRow) => void;
+
+  actionLoadingId: string | number | null;
+}
+
+function TypeBadge({
+  type,
+}: {
+  type: HistoryRow["type"];
+}) {
   const isSummary = type === "Summary";
+
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-all duration-200 ${
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
         isSummary
           ? "bg-violet-50 text-violet-600"
           : "bg-blue-50 text-blue-600"
@@ -93,89 +55,264 @@ function TypeBadge({ type }: { type: HistoryRow["type"] }) {
       ) : (
         <Search className="h-3.5 w-3.5" />
       )}
+
       {type}
     </span>
   );
 }
 
-export default function HistoryTable() {
+export default function HistoryTable({
+  rows,
+  onSave,
+  onDelete,
+  onOpen,
+  actionLoadingId,
+}: HistoryTableProps) {
+  const [openMenuId, setOpenMenuId] = useState<string | number | null>(
+    null
+  );
+  const [showSaveMessage, setShowSaveMessage] = useState(false);
+
+ const handleSave = async (row: HistoryRow) => {
+  // Search history cannot be saved
+  if (row.type === "Search") {
+    setShowSaveMessage(true);
+
+    setTimeout(() => {
+      setShowSaveMessage(false);
+    }, 2500);
+
+    setOpenMenuId(null);
+    return;
+  }
+
+  if (!onSave) return;
+
+  try {
+    await onSave(row);
+  } catch (error) {
+    console.error(
+      "SAVE HISTORY ERROR:",
+      error
+    );
+  }
+
+  setOpenMenuId(null);
+};
+
+  const handleDelete = async (row: HistoryRow) => {
+    setOpenMenuId(null);
+
+    try {
+      await onDelete(row);
+    } catch (error) {
+      console.error("Delete history error:", error);
+    }
+  };
+
+  const handleOpen = (row: HistoryRow) => {
+    setOpenMenuId(null);
+    onOpen(row);
+  };
+
   return (
-    <div className="w-full rounded-2xl border border-slate-100 bg-white shadow-sm transition-all duration-200 hover:shadow-md">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] border-collapse text-left">
+    <div className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="w-full overflow-x-auto">
+        {showSaveMessage && (
+  <div className="fixed right-6 top-6 z-[9999] flex items-center gap-3 rounded-xl border border-amber-200 bg-white px-5 py-4 shadow-xl">
+    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-50">
+      <Bookmark className="h-5 w-5 text-amber-600" />
+    </div>
+
+    <div>
+      <p className="text-sm font-semibold text-slate-800">
+        Cannot save search
+      </p>
+
+      <p className="text-xs text-slate-500">
+        Only generated summaries can be saved.
+      </p>
+    </div>
+
+    <button
+      type="button"
+      onClick={() => setShowSaveMessage(false)}
+      className="ml-2 text-slate-400 hover:text-slate-600"
+    >
+      <X className="h-4 w-4" />
+    </button>
+  </div>
+)}
+        <table className="min-w-[850px] w-full border-collapse">
+          {/* ================================
+              TABLE HEADER
+          ================================= */}
           <thead>
-            <tr className="border-b border-slate-100">
-              <th className="px-8 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <tr className="border-b border-slate-100 bg-white">
+              <th className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
                 Topic / Summary
               </th>
-              <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
+
+              <th className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
                 Type
               </th>
-              <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
+
+              <th className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
                 Date
               </th>
-              <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+
+              <th className="px-6 py-4 text-right text-xs font-medium uppercase tracking-wide text-slate-500">
                 Actions
               </th>
             </tr>
           </thead>
+
+          {/* ================================
+              TABLE BODY
+          ================================= */}
           <tbody>
-            {HISTORY_ROWS.map((row, index) => (
-              <tr
-                key={row.id}
-                className={`transition-all duration-200 hover:bg-violet-50/40 ${
-                  index !== HISTORY_ROWS.length - 1 ? "border-b border-slate-100" : ""
-                }`}
-              >
-                {/* Topic / Summary */}
-                <td className="px-8 py-5">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${row.iconBg}`}
-                    >
-                      <FileText className={`h-5 w-5 ${row.iconText}`} />
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-6 py-16 text-center">
+                  <div className="flex flex-col items-center justify-center">
+                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-violet-50">
+                      <FileText className="h-5 w-5 text-violet-500" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-900">
-                        {row.title}
-                      </p>
-                      <p className="mt-0.5 line-clamp-1 text-xs text-slate-500">
-                        {row.description}
-                      </p>
-                    </div>
-                  </div>
-                </td>
 
-                {/* Type */}
-                <td className="px-6 py-5 align-middle">
-                  <TypeBadge type={row.type} />
-                </td>
+                    <p className="text-sm font-medium text-slate-700">
+                      No history found
+                    </p>
 
-                {/* Date */}
-                <td className="px-6 py-5 align-middle">
-                  <p className="text-sm font-medium text-slate-700">{row.date}</p>
-                  <p className="text-xs text-slate-500">{row.time}</p>
-                </td>
-
-                {/* Actions */}
-                <td className="px-6 py-5 align-middle">
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      className="cursor-pointer rounded-lg p-2 text-slate-400 transition-all duration-200 hover:bg-slate-100 hover:text-violet-600"
-                    >
-                      <Bookmark className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      className="cursor-pointer rounded-lg p-2 text-slate-400 transition-all duration-200 hover:bg-slate-100 hover:text-slate-600"
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Your searches and summaries will appear here.
+                    </p>
                   </div>
                 </td>
               </tr>
-            ))}
+            ) : (
+              rows.map((row, index) => {
+                const isLoading = actionLoadingId === row.id;
+                const isMenuOpen = openMenuId === row.id;
+
+                return (
+                  <tr
+                    key={`${row.type}-${row.id}`}
+                    className={`transition-all duration-200 hover:bg-violet-50/40 ${
+                      index !== rows.length - 1
+                        ? "border-b border-slate-100"
+                        : ""
+                    }`}
+                  >
+                    {/* ================================
+                        TOPIC / SUMMARY
+                    ================================= */}
+                    <td className="px-6 py-5 align-middle">
+                      <button
+                        type="button"
+                        onClick={() => handleOpen(row)}
+                        className="flex w-full cursor-pointer items-center gap-4 text-left"
+                      >
+                        {/* Icon */}
+                        <div
+                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${row.iconBg}`}
+                        >
+                          {row.type === "Summary" ? (
+                            <FileText
+                              className={`h-5 w-5 ${row.iconText}`}
+                            />
+                          ) : (
+                            <Search
+                              className={`h-5 w-5 ${row.iconText}`}
+                            />
+                          )}
+                        </div>
+
+                        {/* Text */}
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-800 hover:text-violet-600">
+                            {row.title}
+                          </p>
+
+                          <p className="mt-1 truncate text-xs text-slate-500">
+                            {row.description}
+                          </p>
+                        </div>
+                      </button>
+                    </td>
+
+                    {/* ================================
+                        TYPE
+                    ================================= */}
+                    <td className="px-6 py-5 align-middle">
+                      <TypeBadge type={row.type} />
+                    </td>
+
+                    {/* ================================
+                        DATE
+                    ================================= */}
+                    <td className="px-6 py-5 align-middle">
+                      {row.date ? (
+                        <>
+                          <p className="text-sm font-medium text-slate-700">
+                            {row.date}
+                          </p>
+
+                          <p className="text-xs text-slate-500">
+                            {row.time}
+                          </p>
+                        </>
+                      ) : (
+                        <span className="text-xs text-slate-400">
+                          Date unavailable
+                        </span>
+                      )}
+                    </td>
+
+                    {/* ================================
+                        ACTIONS
+                    ================================= */}
+                    <td className="px-6 py-5 align-middle">
+                      <div className="relative flex items-center justify-end gap-2">
+                        {/* SAVE */}
+                        <button
+                          type="button"
+                          title="Save"
+                          disabled={isLoading}
+                          onClick={() => handleSave(row)}
+                          className={`cursor-pointer rounded-lg p-2 transition-all ${
+                            isLoading
+                              ? "cursor-not-allowed text-slate-300"
+                              : "text-slate-400 hover:bg-violet-50 hover:text-violet-600"
+                          }`}
+                        >
+                          {isLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Bookmark className="h-4 w-4" />
+                          )}
+                        </button>
+
+                        {/* DELETE */}
+<button
+  type="button"
+  title="Delete"
+  disabled={isLoading}
+  onClick={() => handleDelete(row)}
+  className="cursor-pointer rounded-lg p-2 text-slate-400 transition-all hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+>
+  <Trash2 className="h-4 w-4" />
+</button>
+
+                        {/* ================================
+                            THREE DOT MENU
+                        ================================= */}
+                       
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>

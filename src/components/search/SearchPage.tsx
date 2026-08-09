@@ -92,7 +92,7 @@ const lastSearchRef = useRef("");
   [query, user?.uid]
 );
   useEffect(() => {
-  const topic = searchParams.get("topic");
+const topic = searchParams.get("q") || searchParams.get("topic");
   const results = searchParams.get("results");
 
   if (topic && results === "true" && user?.uid) {

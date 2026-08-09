@@ -1,94 +1,163 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongodb";
-import User from "@/models/User";
+import connectDB from "../../../lib/mongodb";
+import User from "../../../../models/User";
+import { adminAuth } from "../../../../lib/firebaseAdmin";
 
-export async function POST(req: NextRequest) {
+// ============================================
+// GET SETTINGS
+// ============================================
+export async function GET(req: NextRequest) {
   try {
     await connectDB();
+
+    const authHeader = req.headers.get("authorization");
+
+    if (!authHeader?.startsWith("Bearer ")) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const token = authHeader.split("Bearer ")[1];
+
+    // Verify Firebase token
+    const decodedToken = await adminAuth.verifyIdToken(token);
+
+    const uid = decodedToken.uid;
+
+    // Find user in MongoDB
+    const user = await User.findOne({ uid }).lean();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        user,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("GET SETTINGS ERROR:", error);
+
+    return NextResponse.json(
+      {
+        error: "Failed to load settings",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// ============================================
+// UPDATE SETTINGS
+// ============================================
+export async function PUT(req: NextRequest) {
+  try {
+    await connectDB();
+
+    const authHeader = req.headers.get("authorization");
+
+    if (!authHeader?.startsWith("Bearer ")) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const token = authHeader.split("Bearer ")[1];
+
+    // Verify Firebase token
+    const decodedToken = await adminAuth.verifyIdToken(token);
+
+    const uid = decodedToken.uid;
 
     const body = await req.json();
 
     const {
-      uid,
       firstName,
       lastName,
-      email,
+      phone,
+      bio,
       photoURL,
+      preferences,
+      notifications,
     } = body;
 
-    if (!uid || !email || !firstName) {
-      return NextResponse.json(
-        {
-          message: "Missing required fields",
+    // ============================================
+    // Update only allowed Settings fields
+    // ============================================
+
+    const updatedUser = await User.findOneAndUpdate(
+      { uid },
+      {
+        $set: {
+          firstName,
+          lastName,
+          phone,
+          bio,
+          photoURL,
+
+          preferences: {
+            theme: preferences?.theme || "Light",
+            language: preferences?.language || "English",
+            timezone:
+              preferences?.timezone ||
+              "(GMT+05:30) Asia/Kolkata",
+            summaryLength:
+              preferences?.summaryLength || "Medium",
+          },
+
+          notifications: {
+            emailNotifications:
+              notifications?.emailNotifications ?? true,
+
+            summaryCompleted:
+              notifications?.summaryCompleted ?? true,
+
+            weeklyDigest:
+              notifications?.weeklyDigest ?? false,
+
+            productUpdates:
+              notifications?.productUpdates ?? true,
+          },
         },
-        {
-          status: 400,
-        }
-      );
-    }
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).lean();
 
-    // Check if user already exists
-    const existingUser = await User.findOne({
-      email,
-    });
-
-    if (existingUser) {
+    if (!updatedUser) {
       return NextResponse.json(
-        existingUser,
-        {
-          status: 200,
-        }
+        { error: "User not found" },
+        { status: 404 }
       );
     }
-
-    // Create new user
-    const user = await User.create({
-      uid,
-      firstName,
-      lastName,
-      email,
-      photoURL,
-
-      phone: "",
-      bio: "",
-
-      preferences: {
-        theme: "light",
-        language: "English",
-        timezone: "(GMT+05:30) Asia/Kolkata",
-        summaryLength: "Medium",
-      },
-
-      notifications: {
-        emailNotifications: true,
-        summaryCompleted: true,
-        weeklyDigest: false,
-        productUpdates: true,
-      },
-
-      recentSearches: [],
-      savedSummaries: [],
-      totalSummaries: 0,
-      hoursSaved: 0,
-      learningStreak: 0,
-    });
 
     return NextResponse.json(
-      user,
       {
-        status: 201,
-      }
+        success: true,
+        message: "Settings saved successfully",
+        user: updatedUser,
+      },
+      { status: 200 }
     );
   } catch (error) {
-    console.error(error);
+    console.error("UPDATE SETTINGS ERROR:", error);
 
     return NextResponse.json(
       {
-        message: "Internal Server Error",
+        error: "Failed to save settings",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }

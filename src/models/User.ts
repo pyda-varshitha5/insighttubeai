@@ -97,13 +97,21 @@ const UserSchema = new Schema(
 
     // =========================
     // Existing Fields
-    // =========================
-
-    recentSearches: [
-      {
+ recentSearches: {
+  type: [
+    {
+      query: {
         type: String,
+        required: true,
       },
-    ],
+      createdAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+  ],
+  default: [],
+},
 
     savedSummaries: [
       {

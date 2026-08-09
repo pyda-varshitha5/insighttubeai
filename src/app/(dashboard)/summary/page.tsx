@@ -159,28 +159,48 @@ window.dispatchEvent(new Event("progress-updated"));
     return baseHeadings;
   }, [state, bodyWithoutInterview, interviewItems]);
 
-  const handleSave = async () => {
-  if (!user) return;
-
-  const response = await fetch("/api/saved", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      userId: user.uid,
-      title: data.title,
-      markdown: data.markdown,
-    }),
-  });
-
-  if (!response.ok) {
-    alert("Failed to save summary");
+const handleSave = async () => {
+  if (!user) {
+    alert("Please login first");
     return;
   }
 
-  // Refresh dashboard statistics
-  window.dispatchEvent(new Event("progress-updated"));
+  try {
+    // Get Firebase authentication token
+    const token = await user.getIdToken();
+
+    const response = await fetch("/api/saved", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        userId: user.uid,
+        title: data.title,
+        markdown: data.markdown,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error("Save summary error:", result);
+      alert(result?.error || "Failed to save summary");
+      return;
+    }
+
+    console.log("Summary saved successfully:", result);
+
+    // Refresh dashboard / analytics statistics
+    window.dispatchEvent(new Event("progress-updated"));
+
+    // Optional success message
+    alert("Summary saved successfully!");
+  } catch (error) {
+    console.error("Failed to save summary:", error);
+    alert("Failed to save summary");
+  }
 };
 
 const goBack = () => {

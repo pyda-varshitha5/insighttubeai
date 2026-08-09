@@ -9,7 +9,7 @@ import {
   History,
   Bookmark,
   BarChart2,
-  User,
+  
   Settings,
   Bell,
   Play,
@@ -23,7 +23,7 @@ const NAV_ITEMS = [
   { label: "History", href: "/history", icon: History },
   { label: "Saved", href: "/saved", icon: Bookmark },
   { label: "Analytics", href: "/analytics", icon: BarChart2 },
-  { label: "Profile", href: "/profile", icon: User },
+ 
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 

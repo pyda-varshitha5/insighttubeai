@@ -12,28 +12,82 @@ export default function SavedPage() {
   const { user } = useAuth();
 
   const [saved, setSaved] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
     const fetchSaved = async () => {
-      const res = await fetch(`/api/saved?userId=${user.uid}`);
-      const data = await res.json();
-      setSaved(data);
+      try {
+        setLoading(true);
+        setError("");
+
+        // Get Firebase ID token
+        const token = await user.getIdToken();
+
+        // Fetch saved summaries with authentication
+        const res = await fetch("/api/saved", {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(
+            data?.error || "Failed to fetch saved summaries"
+          );
+        }
+
+        // API returns { success: true, summaries: [...] }
+        setSaved(data.summaries || []);
+      } catch (error) {
+        console.error("FETCH SAVED ERROR:", error);
+
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load saved summaries"
+        );
+
+        setSaved([]);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchSaved();
   }, [user]);
 
   return (
-    <div className="min-h-screen space-y-6 bg-slate-50 px-6 py-8 sm:px-8">
+    <div className="min-h-screen bg-slate-50">
       <SavedHeader />
 
       <SavedFilters total={saved.length} />
 
-      <SavedList />
-
-      {saved.length === 0 && <SavedEmptyBanner />}
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <p className="text-sm text-slate-500">
+            Loading saved summaries...
+          </p>
+        </div>
+      ) : error ? (
+        <div className="mx-6 mt-6 rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+          <p className="text-sm font-medium text-red-600">
+            {error}
+          </p>
+        </div>
+      ) : saved.length === 0 ? (
+        <SavedEmptyBanner />
+      ) : (
+        <SavedList />
+      )}
     </div>
   );
 }

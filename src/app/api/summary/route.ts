@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Groq from "groq-sdk";
 import connectDB from "../../lib/mongodb";
 import Progress from "../../models/Progress";
+import User from "../../../models/User";
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY!,
@@ -265,8 +266,28 @@ Output ONLY Markdown.
 
       await progress.save();
 
-      console.log("Generated Summaries:", progress.generatedSummaries);
-      console.log("Total Summaries:", progress.totalSummaries);
+     console.log("Generated Summaries:", progress.generatedSummaries);
+console.log("Total Summaries:", progress.totalSummaries);
+
+// ==========================
+// Update User Analytics
+// ==========================
+
+await User.findOneAndUpdate(
+  { uid: userId },
+  {
+    $inc: {
+      "analytics.summariesGenerated": 1,
+      totalSummaries: 1,
+    },
+    $set: {
+      "analytics.lastActive": new Date(),
+    },
+  },
+  { new: true }
+);
+
+console.log("User summary analytics updated");
     }
 
     return NextResponse.json({

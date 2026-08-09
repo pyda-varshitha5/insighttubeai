@@ -14,18 +14,29 @@ import {
 } from "firebase/auth";
 
 import { useRouter } from "next/navigation";
-
 import { auth } from "@/app/lib/firebase";
+
+// ============================================
+// AUTH CONTEXT TYPE
+// ============================================
 
 type AuthContextType = {
   user: User | null;
   loading: boolean;
 };
 
+// ============================================
+// CREATE CONTEXT
+// ============================================
+
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
 });
+
+// ============================================
+// AUTH PROVIDER
+// ============================================
 
 export function AuthProvider({
   children,
@@ -37,50 +48,101 @@ export function AuthProvider({
 
   const router = useRouter();
 
+  // ============================================
+  // FIREBASE AUTH LISTENER
+  // ============================================
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(
       auth,
       async (firebaseUser) => {
         try {
+          // ========================================
+          // STORE FIREBASE USER
+          // ========================================
+
           setUser(firebaseUser);
 
-          // Check whether this login was started
-          // from the Admin Login tab.
+          // ========================================
+          // ADMIN LOGIN CHECK
+          // ========================================
+
           const adminLoginIntent =
             localStorage.getItem("adminLoginIntent");
 
-          if (firebaseUser && adminLoginIntent === "true") {
-            localStorage.removeItem("adminLoginIntent");
+          if (
+            firebaseUser &&
+            adminLoginIntent === "true"
+          ) {
+            // Remove intent immediately
+            localStorage.removeItem(
+              "adminLoginIntent"
+            );
+
+            // ======================================
+            // GET FIREBASE ID TOKEN
+            // ======================================
 
             const idToken =
               await firebaseUser.getIdToken();
 
-            const response = await fetch("/api/admin", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${idToken}`,
-              },
-            });
+            // ======================================
+            // CHECK ADMIN AUTHORIZATION
+            // ======================================
+
+            const response = await fetch(
+              "/api/admin",
+              {
+                method: "POST",
+                headers: {
+                  Authorization:
+                    `Bearer ${idToken}`,
+                },
+              }
+            );
 
             const data = await response.json();
 
-            if (response.ok && data.authorized) {
-              router.push("/admin/dashboard");
+            // ======================================
+            // AUTHORIZED ADMIN
+            // ======================================
+
+            if (
+              response.ok &&
+              data.authorized
+            ) {
+              setLoading(false);
+
+              router.push(
+                "/admin/dashboard"
+              );
+
               return;
             }
 
-           await signOut(auth);
+            // ======================================
+            // UNAUTHORIZED ADMIN
+            // ======================================
 
-setUser(null);
+            await signOut(auth);
 
-localStorage.setItem(
-  "adminLoginError",
-  "You are not authorized to access the admin panel."
-);
+            setUser(null);
+            setLoading(false);
 
-window.location.href = "/";
-return;
+            localStorage.setItem(
+              "adminLoginError",
+              "You are not authorized to access the admin panel."
+            );
+
+            // Return to landing/login page
+            window.location.href = "/";
+
+            return;
           }
+
+          // ========================================
+          // NORMAL USER LOGIN
+          // ========================================
 
           setLoading(false);
         } catch (error) {
@@ -89,9 +151,20 @@ return;
             error
           );
 
-          localStorage.removeItem("adminLoginIntent");
+          // Clear admin login intent
+          localStorage.removeItem(
+            "adminLoginIntent"
+          );
 
-          await signOut(auth);
+          // Try to sign out
+          try {
+            await signOut(auth);
+          } catch (signOutError) {
+            console.error(
+              "Sign out failed:",
+              signOutError
+            );
+          }
 
           setUser(null);
           setLoading(false);
@@ -101,8 +174,16 @@ return;
       }
     );
 
-    return unsubscribe;
+    // ==========================================
+    // CLEANUP FIREBASE LISTENER
+    // ==========================================
+
+    return () => unsubscribe();
   }, [router]);
+
+  // ============================================
+  // PROVIDER
+  // ============================================
 
   return (
     <AuthContext.Provider
@@ -115,6 +196,10 @@ return;
     </AuthContext.Provider>
   );
 }
+
+// ============================================
+// USE AUTH HOOK
+// ============================================
 
 export function useAuth() {
   return useContext(AuthContext);

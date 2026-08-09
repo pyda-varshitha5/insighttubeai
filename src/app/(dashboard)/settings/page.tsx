@@ -1,774 +1,1176 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
-  signOut,
+  onAuthStateChanged,
   sendPasswordResetEmail,
+  signOut,
+  User as FirebaseUser,
 } from "firebase/auth";
 
 import { auth } from "@/app/lib/firebase";
+import { useAuth } from "@/context/AuthProvider";
+
 import {
   User,
-  Bell,
-  Settings,
-  Shield,
-  Database,
+  Mail,
+  Save,
   Trash2,
   Lock,
   LogOut,
-  Save,
-  Moon,
-  Sun,
+  History,
+  Shield,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
+
+
+// =====================================================
+// TYPES
+// =====================================================
 
 interface Profile {
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
-  bio: string;
   photoURL: string;
 }
 
-interface Preferences {
-  theme: "Light" | "Dark";
-  language: string;
-  timezone: string;
-  summaryLength: string;
-}
+type MessageType = "success" | "error" | "";
 
-interface Notifications {
-  emailNotifications: boolean;
-  summaryCompleted: boolean;
-  weeklyDigest: boolean;
-  productUpdates: boolean;
-}
+
+// =====================================================
+// SETTINGS PAGE
+// =====================================================
 
 export default function SettingsPage() {
-    const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const router = useRouter();
+
+  // Existing application auth state
+  const {
+    user: contextUser,
+    loading: authLoading,
+  } = useAuth();
+
+  // Local Firebase auth state
+  const [firebaseUser, setFirebaseUser] =
+    useState<FirebaseUser | null>(null);
+
+  const [firebaseChecked, setFirebaseChecked] =
+    useState(false);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const [profile, setProfile] = useState<Profile>({
     firstName: "",
     lastName: "",
     email: "",
-    phone: "",
-    bio: "",
     photoURL: "",
   });
 
-  const [preferences, setPreferences] =
-    useState<Preferences>({
-      theme: "Light",
-      language: "English",
-      timezone: "(GMT+05:30) Asia/Kolkata",
-      summaryLength: "Medium",
-    });
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] =
+    useState<MessageType>("");
 
-  const [notifications, setNotifications] =
-    useState<Notifications>({
-      emailNotifications: true,
-      summaryCompleted: true,
-      weeklyDigest: false,
-      productUpdates: true,
-    });
+  const [clearingHistory, setClearingHistory] =
+    useState(false);
+
+  const [changingPassword, setChangingPassword] =
+    useState(false);
+
+  const [deletingAccount, setDeletingAccount] =
+    useState(false);
+
+  const [loggingOut, setLoggingOut] =
+    useState(false);
+
+  const [showDeleteConfirm, setShowDeleteConfirm] =
+    useState(false);
+
+
+  // =====================================================
+  // SHOW MESSAGE
+  // =====================================================
+
+  function showMessage(
+    text: string,
+    type: "success" | "error"
+  ) {
+    setMessage(text);
+    setMessageType(type);
+
+    setTimeout(() => {
+      setMessage("");
+      setMessageType("");
+    }, 3500);
+  }
+
+
+  // =====================================================
+  // FIREBASE AUTH LISTENER
+  // =====================================================
 
   useEffect(() => {
-    loadSettings();
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (currentUser) => {
+        console.log(
+          "SETTINGS FIREBASE USER:",
+          currentUser?.email || "NO USER"
+        );
+
+        setFirebaseUser(currentUser);
+        setFirebaseChecked(true);
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
-  async function loadSettings() {
+
+  // =====================================================
+  // GET CURRENT USER
+  // =====================================================
+
+  const currentUser =
+    firebaseUser ||
+    contextUser ||
+    auth.currentUser;
+
+
+  // =====================================================
+  // LOAD SETTINGS
+  // =====================================================
+
+  useEffect(() => {
+    if (!firebaseChecked) {
+      return;
+    }
+
+    if (!currentUser) {
+      setLoading(false);
+      return;
+    }
+
+    loadSettings(currentUser);
+  }, [
+    firebaseChecked,
+    currentUser,
+  ]);
+
+
+  // =====================================================
+  // LOAD USER SETTINGS FROM MONGODB
+  // =====================================================
+
+  async function loadSettings(
+    firebaseUser: FirebaseUser
+  ) {
     try {
       setLoading(true);
 
-      // MongoDB API will be connected later
+      const token =
+        await firebaseUser.getIdToken();
+
+      const response = await fetch(
+        "/api/user/settings",
+        {
+          method: "GET",
+          headers: {
+            Authorization:
+              `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+          "Failed to load settings"
+        );
+      }
+
+      const mongoUser =
+        data.user;
 
       setProfile({
-        firstName: "Varshitha",
-        lastName: "Pyda",
-        email: "example@gmail.com",
-        phone: "",
-        bio: "",
+        firstName:
+          mongoUser.firstName || "",
+
+        lastName:
+          mongoUser.lastName || "",
+
+        email:
+          mongoUser.email ||
+          firebaseUser.email ||
+          "",
+
         photoURL:
-          "https://ui-avatars.com/api/?name=Varshitha",
+          mongoUser.photoURL ||
+          firebaseUser.photoURL ||
+          "",
       });
+
+    } catch (error) {
+      console.error(
+        "LOAD SETTINGS ERROR:",
+        error
+      );
+
+      showMessage(
+        "Unable to load your profile.",
+        "error"
+      );
+
     } finally {
       setLoading(false);
     }
   }
 
+
+  // =====================================================
+  // SAVE PROFILE
+  // =====================================================
+
   async function saveSettings() {
-    setSaved(true);
+    const user =
+      auth.currentUser ||
+      firebaseUser ||
+      contextUser;
 
-    setTimeout(() => {
-      setSaved(false);
-    }, 2000);
+    if (!user) {
+      showMessage(
+        "Please login first.",
+        "error"
+      );
+
+      return;
+    }
+
+    if (!profile.firstName.trim()) {
+      showMessage(
+        "First name is required.",
+        "error"
+      );
+
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const token =
+        await user.getIdToken();
+
+      const response = await fetch(
+        "/api/user/settings",
+        {
+          method: "PUT",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+
+            Authorization:
+              `Bearer ${token}`,
+          },
+
+          body: JSON.stringify({
+            firstName:
+              profile.firstName.trim(),
+
+            lastName:
+              profile.lastName.trim(),
+
+            email:
+              profile.email,
+
+            photoURL:
+              profile.photoURL,
+          }),
+        }
+      );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+          "Failed to save settings"
+        );
+      }
+
+      setProfile({
+        firstName:
+          data.user.firstName || "",
+
+        lastName:
+          data.user.lastName || "",
+
+        email:
+          data.user.email ||
+          profile.email,
+
+        photoURL:
+          data.user.photoURL ||
+          "",
+      });
+
+      showMessage(
+        "Profile updated successfully!",
+        "success"
+      );
+
+    } catch (error) {
+      console.error(
+        "SAVE SETTINGS ERROR:",
+        error
+      );
+
+      showMessage(
+        "Unable to save your changes.",
+        "error"
+      );
+
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function toggleNotification(
-    key: keyof Notifications
-  ) {
-    setNotifications((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+
+  // =====================================================
+  // CLEAR SEARCH HISTORY
+  // =====================================================
+
+  async function clearHistory() {
+    const user =
+      auth.currentUser ||
+      firebaseUser ||
+      contextUser;
+
+    if (!user) {
+      showMessage(
+        "Please login first.",
+        "error"
+      );
+
+      return;
+    }
+
+    try {
+      setClearingHistory(true);
+
+      const token =
+        await user.getIdToken();
+
+      const response = await fetch(
+        "/api/user/clear-history",
+        {
+          method: "PUT",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+
+            Authorization:
+              `Bearer ${token}`,
+          },
+
+          body: JSON.stringify({}),
+        }
+      );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+          data.error ||
+          "Failed to clear history"
+        );
+      }
+
+      showMessage(
+        "Search history cleared successfully.",
+        "success"
+      );
+
+    } catch (error) {
+      console.error(
+        "CLEAR HISTORY ERROR:",
+        error
+      );
+
+      showMessage(
+        "Unable to clear search history.",
+        "error"
+      );
+
+    } finally {
+      setClearingHistory(false);
+    }
   }
 
-  function updatePreference(
-    key: keyof Preferences,
-    value: string
-  ) {
-    setPreferences((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
+
+  // =====================================================
+  // CHANGE PASSWORD
+  // =====================================================
+
+  async function changePassword() {
+    const user =
+      auth.currentUser ||
+      firebaseUser ||
+      contextUser;
+
+    if (!user?.email) {
+      showMessage(
+        "Unable to find your email address.",
+        "error"
+      );
+
+      return;
+    }
+
+    try {
+      setChangingPassword(true);
+
+      await sendPasswordResetEmail(
+        auth,
+        user.email
+      );
+
+      showMessage(
+        "Password reset link sent to your email.",
+        "success"
+      );
+
+    } catch (error) {
+      console.error(
+        "CHANGE PASSWORD ERROR:",
+        error
+      );
+
+      showMessage(
+        "Unable to send password reset email.",
+        "error"
+      );
+
+    } finally {
+      setChangingPassword(false);
+    }
   }
 
-  
-  
-  function deleteAccount() {
-    alert("Delete Account");
+
+  // =====================================================
+  // DELETE ACCOUNT
+  // =====================================================
+
+  async function deleteAccount() {
+    const user =
+      auth.currentUser ||
+      firebaseUser ||
+      contextUser;
+
+    if (!user) {
+      showMessage(
+        "Please login first.",
+        "error"
+      );
+
+      return;
+    }
+
+    try {
+      setDeletingAccount(true);
+
+      const token =
+        await user.getIdToken();
+
+      const response = await fetch(
+        "/api/user/delete-account",
+        {
+          method: "DELETE",
+
+          headers: {
+            Authorization:
+              `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+          "Failed to delete account"
+        );
+      }
+
+      localStorage.clear();
+      sessionStorage.clear();
+
+      await signOut(auth);
+
+      router.replace("/login");
+
+    } catch (error) {
+      console.error(
+        "DELETE ACCOUNT ERROR:",
+        error
+      );
+
+      showMessage(
+        "Unable to delete your account.",
+        "error"
+      );
+
+      setDeletingAccount(false);
+    }
   }
+
+
+  // =====================================================
+  // LOGOUT
+  // =====================================================
 
   async function logout() {
-  try {
-    await signOut(auth);
+    try {
+      setLoggingOut(true);
 
-    localStorage.clear();
-    sessionStorage.clear();
+      await signOut(auth);
 
-    router.replace("/login");
-  } catch (error) {
-    console.error(error);
-    alert("Failed to logout.");
-  }
-}
+      localStorage.clear();
+      sessionStorage.clear();
 
-async function changePassword() {
-  try {
-    if (!auth.currentUser?.email) {
-      alert("Please login first.");
-      return;
+      router.replace("/login");
+
+    } catch (error) {
+      console.error(
+        "LOGOUT ERROR:",
+        error
+      );
+
+      showMessage(
+        "Unable to logout. Please try again.",
+        "error"
+      );
+
+      setLoggingOut(false);
     }
+  }
 
-    await sendPasswordResetEmail(
-      auth,
-      auth.currentUser.email
+
+  // =====================================================
+  // WAIT FOR AUTH
+  // =====================================================
+
+  if (
+    authLoading ||
+    !firebaseChecked ||
+    loading
+  ) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#F7F8FC]">
+        <div className="flex flex-col items-center gap-2">
+          <Loader2
+            className="h-7 w-7 animate-spin text-violet-600"
+          />
+
+          <p className="text-sm text-gray-500">
+            Loading your settings...
+          </p>
+        </div>
+      </div>
     );
-
-    alert("Password reset email sent.");
-  } catch (error) {
-    console.error(error);
-    alert("Unable to send reset email.");
   }
-}
 
-async function clearHistory() {
-  try {
-    if (!auth.currentUser?.email) {
-      alert("User not found.");
-      return;
-    }
 
-    const response = await fetch(
-      "/api/user/clear-history",
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: auth.currentUser.email,
-        }),
-      }
+  // =====================================================
+  // NO USER
+  // =====================================================
+
+  if (!currentUser) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#F7F8FC] px-4">
+
+        <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-7 text-center shadow-sm">
+
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-violet-100">
+            <Shield className="h-7 w-7 text-violet-600" />
+          </div>
+
+          <h1 className="mt-5 text-2xl font-bold text-gray-900">
+            Login Required
+          </h1>
+
+          <p className="mt-2 text-sm leading-6 text-gray-500">
+            Please login to access your account settings.
+          </p>
+
+          <button
+            onClick={() =>
+              router.push("/login")
+            }
+            className="mt-5 w-full rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-700"
+          >
+            Go to Login
+          </button>
+
+        </div>
+
+      </div>
     );
-
-    if (!response.ok) {
-      throw new Error("Failed to clear history.");
-    }
-
-    alert("Search history cleared.");
-  } catch (error) {
-    console.error(error);
-    alert("Unable to clear history.");
   }
-}
+
+
+  // =====================================================
+  // SETTINGS PAGE
+  // =====================================================
 
   return (
-    <div className="min-h-screen bg-[#F7F8FC]">
+    <div className="min-h-screen bg-[#F7F8FC] px-6 py-6 lg:px-8">
 
-  <div className="mx-auto max-w-7xl p-8">
+      {/* 
+        Full content width like the History page.
+        This removes the excessive empty space created
+        by max-w-5xl.
+      */}
+      <div className="w-full max-w-none">
 
-    {/* Header */}
+        {/* =================================================
+            HEADER
+        ================================================= */}
 
-    <div className="mb-8">
+        <div className="mb-5">
 
-      <h1 className="text-4xl font-bold text-gray-900">
-        Settings
-      </h1>
+          <h1 className="text-3xl font-bold tracking-tight text-[#111827]">
+            Settings
+          </h1>
 
-      <p className="mt-2 text-gray-500">
-        Manage your account preferences and application settings.
-      </p>
+          <p className="mt-1 text-sm text-gray-500">
+            Manage your account and profile settings.
+          </p>
 
-    </div>
+        </div>
 
-    {/* Profile Card */}
 
-    <div className="rounded-3xl border border-gray-200 bg-white p-8 shadow-sm">
+        {/* =================================================
+            MESSAGE
+        ================================================= */}
 
-      <div className="flex items-center justify-between">
+        {message && (
+          <div
+            className={`mb-4 flex items-center gap-2.5 rounded-xl border px-4 py-3 ${
+              messageType === "success"
+                ? "border-green-200 bg-green-50 text-green-700"
+                : "border-red-200 bg-red-50 text-red-700"
+            }`}
+          >
 
-        <div className="flex items-center gap-3">
+            {messageType === "success" ? (
+              <CheckCircle2 className="h-4.5 w-4.5 shrink-0" />
+            ) : (
+              <AlertCircle className="h-4.5 w-4.5 shrink-0" />
+            )}
 
-          <div className="rounded-xl bg-violet-100 p-3">
-
-            <User className="h-6 w-6 text-violet-600"/>
-
-          </div>
-
-          <div>
-
-            <h2 className="text-2xl font-semibold">
-              Profile Information
-            </h2>
-
-            <p className="text-gray-500">
-              Update your personal information and profile picture.
+            <p className="text-sm font-medium">
+              {message}
             </p>
 
           </div>
-
-        </div>
-
-        <button
-          className="rounded-xl border border-gray-300 px-5 py-2 font-medium hover:bg-gray-50"
-        >
-          Edit Profile
-        </button>
-
-      </div>
-
-      <div className="mt-8 flex items-center gap-8">
-
-        <img
-          src={
-            profile.photoURL ||
-            "https://ui-avatars.com/api/?name=User"
-          }
-          alt="Profile"
-          className="h-28 w-28 rounded-full border-4 border-violet-100 object-cover"
-        />
-
-        <div className="grid flex-1 grid-cols-2 gap-6">
-
-          <div>
-
-            <label className="mb-2 block text-sm font-semibold text-gray-700">
-              First Name
-            </label>
-
-            <input
-              className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-violet-500"
-              value={profile.firstName}
-              onChange={(e)=>
-                setProfile({
-                  ...profile,
-                  firstName:e.target.value
-                })
-              }
-            />
-
-          </div>
-
-          <div>
-
-            <label className="mb-2 block text-sm font-semibold text-gray-700">
-              Last Name
-            </label>
-
-            <input
-              className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-violet-500"
-              value={profile.lastName}
-              onChange={(e)=>
-                setProfile({
-                  ...profile,
-                  lastName:e.target.value
-                })
-              }
-            />
-
-          </div>
-
-          <div>
-
-            <label className="mb-2 block text-sm font-semibold text-gray-700">
-              Email
-            </label>
-
-            <input
-              className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-violet-500"
-              value={profile.email}
-              onChange={(e)=>
-                setProfile({
-                  ...profile,
-                  email:e.target.value
-                })
-              }
-            />
-
-          </div>
-
-          <div>
-
-            <label className="mb-2 block text-sm font-semibold text-gray-700">
-              Phone Number
-            </label>
-
-            <input
-              className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-violet-500"
-              value={profile.phone}
-              onChange={(e)=>
-                setProfile({
-                  ...profile,
-                  phone:e.target.value
-                })
-              }
-            />
-
-          </div>
-
-        </div>
-
-      </div>
-
-      <div className="mt-6">
-
-        <label className="mb-2 block text-sm font-semibold text-gray-700">
-          Bio
-        </label>
-
-        <textarea
-          rows={4}
-          className="w-full rounded-xl border border-gray-300 p-4 outline-none focus:border-violet-500"
-          value={profile.bio}
-          onChange={(e)=>
-            setProfile({
-              ...profile,
-              bio:e.target.value
-            })
-          }
-        />
-
-      </div>
-
-      <div className="mt-8 flex justify-end gap-4">
-
-        {saved && (
-
-          <div className="rounded-xl bg-green-100 px-4 py-3 text-green-700">
-            Settings Saved Successfully
-          </div>
-
         )}
 
-        <button
-          onClick={saveSettings}
-          className="flex items-center gap-2 rounded-xl bg-violet-600 px-6 py-3 text-white hover:bg-violet-700"
-        >
 
-          <Save size={18}/>
+        {/* =================================================
+            PROFILE CARD
+        ================================================= */}
 
-          Save Changes
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
 
-        </button>
+          {/* CARD HEADER */}
+
+          <div className="border-b border-gray-100 px-5 py-4">
+
+            <div className="flex items-center gap-3">
+
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100">
+                <User className="h-5 w-5 text-violet-600" />
+              </div>
+
+              <div>
+
+                <h2 className="text-lg font-bold text-gray-900">
+                  Profile Information
+                </h2>
+
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Update your personal information.
+                </p>
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+          {/* CARD BODY */}
+
+          <div className="px-5 py-5">
+
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+
+              {/* =================================================
+                  PROFILE IMAGE
+              ================================================= */}
+
+              <div className="flex shrink-0 flex-col items-center lg:w-28">
+
+                <div className="relative">
+
+                  <img
+                    src={
+                      profile.photoURL ||
+                      `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                        `${profile.firstName} ${profile.lastName}`
+                      )}&background=ede9fe&color=7c3aed&size=200`
+                    }
+                    alt="Profile"
+                    className="h-24 w-24 rounded-full border-4 border-violet-100 object-cover shadow-sm"
+                  />
+
+                  <div className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full border-3 border-white bg-violet-600">
+
+                    <User className="h-3.5 w-3.5 text-white" />
+
+                  </div>
+
+                </div>
+
+                <p className="mt-2 text-center text-[11px] text-gray-400">
+                  Profile picture
+                </p>
+
+              </div>
+
+
+              {/* =================================================
+                  FORM
+              ================================================= */}
+
+              <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2">
+
+                {/* FIRST NAME */}
+
+                <div>
+
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-700">
+                    First Name
+                  </label>
+
+                  <div className="relative">
+
+                    <User className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
+                    <input
+                      type="text"
+                      value={profile.firstName}
+                      onChange={(e) =>
+                        setProfile({
+                          ...profile,
+                          firstName:
+                            e.target.value,
+                        })
+                      }
+                      placeholder="Enter first name"
+                      className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-3.5 text-sm text-gray-900 outline-none transition focus:border-violet-500 focus:ring-3 focus:ring-violet-100"
+                    />
+
+                  </div>
+
+                </div>
+
+
+                {/* LAST NAME */}
+
+                <div>
+
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-700">
+                    Last Name
+                  </label>
+
+                  <div className="relative">
+
+                    <User className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
+                    <input
+                      type="text"
+                      value={profile.lastName}
+                      onChange={(e) =>
+                        setProfile({
+                          ...profile,
+                          lastName:
+                            e.target.value,
+                        })
+                      }
+                      placeholder="Enter last name"
+                      className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-3.5 text-sm text-gray-900 outline-none transition focus:border-violet-500 focus:ring-3 focus:ring-violet-100"
+                    />
+
+                  </div>
+
+                </div>
+
+
+                {/* EMAIL */}
+
+                <div className="sm:col-span-2">
+
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-700">
+                    Email Address
+                  </label>
+
+                  <div className="relative">
+
+                    <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
+                    <input
+                      type="email"
+                      value={profile.email}
+                      disabled
+                      className="w-full cursor-not-allowed rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3.5 text-sm text-gray-500 outline-none"
+                    />
+
+                  </div>
+
+                  <p className="mt-1.5 text-[11px] text-gray-400">
+                    Your email address is managed through your authentication account.
+                  </p>
+
+                </div>
+
+              </div>
+
+            </div>
+
+
+            {/* =================================================
+                SAVE BUTTON
+            ================================================= */}
+
+            <div className="mt-5 flex justify-end border-t border-gray-100 pt-4">
+
+              <button
+                onClick={saveSettings}
+                disabled={saving}
+                className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700 hover:shadow disabled:cursor-not-allowed disabled:opacity-60"
+              >
+
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4" />
+                    Save Changes
+                  </>
+                )}
+
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+        {/* =================================================
+            ACCOUNT & SECURITY
+        ================================================= */}
+
+        <div className="mt-5 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+
+          {/* HEADER */}
+
+          <div className="border-b border-gray-100 px-5 py-4">
+
+            <div className="flex items-center gap-3">
+
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100">
+                <Shield className="h-5 w-5 text-violet-600" />
+              </div>
+
+              <div>
+
+                <h2 className="text-lg font-bold text-gray-900">
+                  Account & Security
+                </h2>
+
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Manage your account security and data.
+                </p>
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+          {/* =================================================
+              SECURITY OPTIONS
+          ================================================= */}
+
+          <div className="divide-y divide-gray-100">
+
+            {/* CHANGE PASSWORD */}
+
+            <button
+              onClick={changePassword}
+              disabled={changingPassword}
+              className="group flex w-full items-center justify-between px-5 py-3.5 text-left transition hover:bg-gray-50"
+            >
+
+              <div className="flex items-center gap-3">
+
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-50 transition group-hover:bg-violet-100">
+                  <Lock className="h-4 w-4 text-violet-600" />
+                </div>
+
+                <div>
+
+                  <p className="text-sm font-semibold text-gray-900">
+                    Change Password
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    Receive a password reset link by email.
+                  </p>
+
+                </div>
+
+              </div>
+
+              {changingPassword ? (
+                <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
+              ) : (
+                <span className="text-xs font-medium text-violet-600">
+                  Change
+                </span>
+              )}
+
+            </button>
+
+
+            {/* CLEAR HISTORY */}
+
+            <button
+              onClick={clearHistory}
+              disabled={clearingHistory}
+              className="group flex w-full items-center justify-between px-5 py-3.5 text-left transition hover:bg-gray-50"
+            >
+
+              <div className="flex items-center gap-3">
+
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 transition group-hover:bg-blue-100">
+                  <History className="h-4 w-4 text-blue-600" />
+                </div>
+
+                <div>
+
+                  <p className="text-sm font-semibold text-gray-900">
+                    Clear Search History
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    Remove all your recent searches.
+                  </p>
+
+                </div>
+
+              </div>
+
+              {clearingHistory ? (
+                <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+              ) : (
+                <span className="text-xs font-medium text-blue-600">
+                  Clear
+                </span>
+              )}
+
+            </button>
+
+
+            {/* LOGOUT */}
+
+            <button
+              onClick={logout}
+              disabled={loggingOut}
+              className="group flex w-full items-center justify-between px-5 py-3.5 text-left transition hover:bg-gray-50"
+            >
+
+              <div className="flex items-center gap-3">
+
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 transition group-hover:bg-gray-200">
+                  <LogOut className="h-4 w-4 text-gray-600" />
+                </div>
+
+                <div>
+
+                  <p className="text-sm font-semibold text-gray-900">
+                    Logout
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    Sign out of your InsightTube-AI account.
+                  </p>
+
+                </div>
+
+              </div>
+
+              {loggingOut ? (
+                <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+              ) : (
+                <span className="text-xs font-medium text-gray-600">
+                  Logout
+                </span>
+              )}
+
+            </button>
+
+
+            {/* DELETE ACCOUNT */}
+
+            <button
+              onClick={() =>
+                setShowDeleteConfirm(true)
+              }
+              disabled={deletingAccount}
+              className="group flex w-full items-center justify-between px-5 py-3.5 text-left transition hover:bg-red-50"
+            >
+
+              <div className="flex items-center gap-3">
+
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 transition group-hover:bg-red-100">
+                  <Trash2 className="h-4 w-4 text-red-600" />
+                </div>
+
+                <div>
+
+                  <p className="text-sm font-semibold text-red-600">
+                    Delete Account
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-red-400">
+                    Permanently delete your account and data.
+                  </p>
+
+                </div>
+
+              </div>
+
+              <span className="text-xs font-medium text-red-600">
+                Delete
+              </span>
+
+            </button>
+
+          </div>
+
+        </div>
+
+
+        {/* =================================================
+            DELETE MODAL
+        ================================================= */}
+
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+
+            <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-100">
+                <Trash2 className="h-6 w-6 text-red-600" />
+              </div>
+
+              <h3 className="mt-4 text-xl font-bold text-gray-900">
+                Delete your account?
+              </h3>
+
+              <p className="mt-2 text-sm leading-6 text-gray-500">
+                This action permanently removes your account
+                and associated data. This cannot be undone.
+              </p>
+
+              <div className="mt-6 flex gap-2.5">
+
+                <button
+                  onClick={() =>
+                    setShowDeleteConfirm(false)
+                  }
+                  disabled={deletingAccount}
+                  className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  onClick={deleteAccount}
+                  disabled={deletingAccount}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+                >
+
+                  {deletingAccount ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" />
+                      Delete Account
+                    </>
+                  )}
+
+                </button>
+
+              </div>
+
+            </div>
+
+          </div>
+        )}
+
+
+        {/* =================================================
+            FOOTER
+        ================================================= */}
+
+        <div className="py-5 text-center">
+
+          <p className="text-[11px] text-gray-400">
+            InsightTube-AI • Account Settings
+          </p>
+
+        </div>
 
       </div>
 
     </div>
-
-    {/* Preferences + Notifications */}
-
-    <div className="mt-8 grid grid-cols-2 gap-8">
-              {/* Preferences Card */}
-
-      <div className="rounded-3xl border border-gray-200 bg-white p-8 shadow-sm">
-
-        <div className="mb-6 flex items-center gap-3">
-
-          <div className="rounded-xl bg-violet-100 p-3">
-
-            <Settings className="h-6 w-6 text-violet-600"/>
-
-          </div>
-
-          <div>
-
-            <h2 className="text-2xl font-semibold">
-              Preferences
-            </h2>
-
-            <p className="text-gray-500">
-              Customize your application experience.
-            </p>
-
-          </div>
-
-        </div>
-
-        <div className="space-y-6">
-
-          <div>
-
-            <label className="mb-2 block text-sm font-semibold">
-              Theme
-            </label>
-
-            <select
-              className="w-full rounded-xl border border-gray-300 p-3"
-              value={preferences.theme}
-              onChange={(e)=>
-                updatePreference("theme",e.target.value)
-              }
-            >
-              <option>Light</option>
-              <option>Dark</option>
-            </select>
-
-          </div>
-
-          <div>
-
-            <label className="mb-2 block text-sm font-semibold">
-              Language
-            </label>
-
-            <select
-              className="w-full rounded-xl border border-gray-300 p-3"
-              value={preferences.language}
-              onChange={(e)=>
-                updatePreference("language",e.target.value)
-              }
-            >
-
-              <option>English</option>
-              <option>Hindi</option>
-              <option>Telugu</option>
-
-            </select>
-
-          </div>
-
-          <div>
-
-            <label className="mb-2 block text-sm font-semibold">
-              Timezone
-            </label>
-
-            <select
-              className="w-full rounded-xl border border-gray-300 p-3"
-              value={preferences.timezone}
-              onChange={(e)=>
-                updatePreference("timezone",e.target.value)
-              }
-            >
-
-              <option>(GMT+05:30) Asia/Kolkata</option>
-
-              <option>UTC</option>
-
-            </select>
-
-          </div>
-
-          <div>
-
-            <label className="mb-2 block text-sm font-semibold">
-              Summary Length
-            </label>
-
-            <select
-              className="w-full rounded-xl border border-gray-300 p-3"
-              value={preferences.summaryLength}
-              onChange={(e)=>
-                updatePreference("summaryLength",e.target.value)
-              }
-            >
-
-              <option>Short</option>
-
-              <option>Medium</option>
-
-              <option>Detailed</option>
-
-            </select>
-
-          </div>
-
-        </div>
-
-      </div>
-
-      {/* Notifications Card */}
-
-      <div className="rounded-3xl border border-gray-200 bg-white p-8 shadow-sm">
-
-        <div className="mb-6 flex items-center gap-3">
-
-          <div className="rounded-xl bg-violet-100 p-3">
-
-            <Bell className="h-6 w-6 text-violet-600"/>
-
-          </div>
-
-          <div>
-
-            <h2 className="text-2xl font-semibold">
-              Notifications
-            </h2>
-
-            <p className="text-gray-500">
-              Control notification preferences.
-            </p>
-
-          </div>
-
-        </div>
-
-        <div className="space-y-5">
-
-          <div className="flex items-center justify-between">
-
-            <span>Email Notifications</span>
-
-            <input
-              type="checkbox"
-              checked={notifications.emailNotifications}
-              onChange={()=>
-                toggleNotification("emailNotifications")
-              }
-            />
-
-          </div>
-
-          <div className="flex items-center justify-between">
-
-            <span>Summary Completed</span>
-
-            <input
-              type="checkbox"
-              checked={notifications.summaryCompleted}
-              onChange={()=>
-                toggleNotification("summaryCompleted")
-              }
-            />
-
-          </div>
-
-          <div className="flex items-center justify-between">
-
-            <span>Weekly Digest</span>
-
-            <input
-              type="checkbox"
-              checked={notifications.weeklyDigest}
-              onChange={()=>
-                toggleNotification("weeklyDigest")
-              }
-            />
-
-          </div>
-
-          <div className="flex items-center justify-between">
-
-            <span>Product Updates</span>
-
-            <input
-              type="checkbox"
-              checked={notifications.productUpdates}
-              onChange={()=>
-                toggleNotification("productUpdates")
-              }
-            />
-
-          </div>
-
-        </div>
-
-      </div>
-
-    </div>
-
-    {/* Data & Privacy */}
-
-    <div className="mt-8 grid grid-cols-2 gap-8">
-              {/* Data & Privacy Card */}
-
-      <div className="rounded-3xl border border-gray-200 bg-white p-8 shadow-sm">
-
-        <div className="mb-6 flex items-center gap-3">
-
-          <div className="rounded-xl bg-violet-100 p-3">
-            <Database className="h-6 w-6 text-violet-600" />
-          </div>
-
-          <div>
-            <h2 className="text-2xl font-semibold">
-              Data & Privacy
-            </h2>
-
-            <p className="text-gray-500">
-              Manage your personal data and privacy.
-            </p>
-          </div>
-
-        </div>
-
-        <div className="space-y-5">
-
-          <button
-            onClick={clearHistory}
-            className="flex w-full items-center justify-between rounded-xl border border-gray-200 p-4 hover:bg-gray-50"
-          >
-            <div>
-
-              <p className="font-semibold">
-                Clear Search History
-              </p>
-
-              <p className="text-sm text-gray-500">
-                Remove all recent searches.
-              </p>
-
-            </div>
-
-            <Trash2 className="text-red-500" />
-
-          </button>
-
-          <button
-            onClick={deleteAccount}
-            className="flex w-full items-center justify-between rounded-xl border border-red-300 bg-red-50 p-4 hover:bg-red-100"
-          >
-
-            <div>
-
-              <p className="font-semibold text-red-600">
-                Delete Account
-              </p>
-
-              <p className="text-sm text-red-500">
-                Permanently remove your account.
-              </p>
-
-            </div>
-
-            <Trash2 className="text-red-600" />
-
-          </button>
-
-        </div>
-
-      </div>
-
-      {/* Account Card */}
-
-      <div className="rounded-3xl border border-gray-200 bg-white p-8 shadow-sm">
-
-        <div className="mb-6 flex items-center gap-3">
-
-          <div className="rounded-xl bg-violet-100 p-3">
-            <Shield className="h-6 w-6 text-violet-600" />
-          </div>
-
-          <div>
-
-            <h2 className="text-2xl font-semibold">
-              Account
-            </h2>
-
-            <p className="text-gray-500">
-              Manage your account security.
-            </p>
-
-          </div>
-
-        </div>
-
-        <div className="space-y-5">
-
-          <button
-            onClick={changePassword}
-            className="flex w-full items-center justify-between rounded-xl border border-gray-200 p-4 hover:bg-gray-50"
-          >
-
-            <div>
-
-              <p className="font-semibold">
-                Change Password
-              </p>
-
-              <p className="text-sm text-gray-500">
-                Update your login password.
-              </p>
-
-            </div>
-
-            <Lock className="text-violet-600" />
-
-          </button>
-
-          <button
-            onClick={logout}
-            className="flex w-full items-center justify-between rounded-xl border border-gray-200 p-4 hover:bg-gray-50"
-          >
-
-            <div>
-
-              <p className="font-semibold">
-                Logout
-              </p>
-
-              <p className="text-sm text-gray-500">
-                Sign out of your account.
-              </p>
-
-            </div>
-
-            <LogOut className="text-red-500" />
-
-          </button>
-
-        </div>
-
-      </div>
-
-    </div>
-
-    {/* Bottom Save */}
-
-    <div className="mt-10 flex justify-end">
-
-      <button
-        onClick={saveSettings}
-        className="flex items-center gap-2 rounded-xl bg-violet-600 px-8 py-3 text-white shadow-lg transition hover:bg-violet-700"
-      >
-
-        <Save size={18} />
-
-        Save All Settings
-
-      </button>
-
-    </div>
-
-  </div>
-
-</div>
-
   );
 }
-    

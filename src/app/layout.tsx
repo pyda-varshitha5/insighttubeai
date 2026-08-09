@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+
 import { AuthProvider } from "@/context/AuthProvider";
+
 import "./globals.css";
 
 const inter = Inter({
@@ -9,7 +11,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "InsightTube-AI | Login",
+  title: "InsightTube-AI",
   description: "Learn any topic from YouTube, the smarter way.",
 };
 
@@ -20,8 +22,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} font-sans antialiased`}>
-        <AuthProvider>{children}</AuthProvider>
+      <body
+        className={`${inter.variable} font-sans antialiased`}
+      >
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );
