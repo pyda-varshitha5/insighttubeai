@@ -1,107 +1,131 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "../../../lib/mongodb";
-import User from "../../../../models/User";
-export async function POST(req: NextRequest) {
+import connectDB from "@/app/lib/mongodb";
+import User from "@/models/User";
+import { adminAuth } from "@/lib/firebaseAdmin";
+
+export async function POST(request: NextRequest) {
   try {
+    // ==========================================
+    // CONNECT TO MONGODB
+    // ==========================================
+
     await connectDB();
 
-    const body = await req.json();
+    // ==========================================
+    // GET AUTHORIZATION HEADER
+    // ==========================================
 
-    const {
-      uid,
-      firstName,
-      lastName,
-      email,
-      photoURL,
-    } = body;
+    const authorization = request.headers.get("authorization");
 
-    // Validate required fields
-    if (!uid || !email) {
+    if (!authorization?.startsWith("Bearer ")) {
       return NextResponse.json(
         {
           success: false,
-          error: "UID and email are required",
+          error: "Unauthorized",
         },
-        { status: 400 }
+        { status: 401 }
       );
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
-    const now = new Date();
+    // ==========================================
+    // GET FIREBASE TOKEN
+    // ==========================================
 
-    // First check if the user already exists
-    const existingUser = await User.findOne({ uid });
+    const idToken = authorization.substring(7);
 
-    if (existingUser) {
-      // Update existing user
-      existingUser.firstName = firstName || existingUser.firstName || "User";
-      existingUser.lastName = lastName || existingUser.lastName || "";
-      existingUser.email = normalizedEmail;
-      existingUser.photoURL = photoURL || existingUser.photoURL || "";
+    // ==========================================
+    // VERIFY FIREBASE TOKEN
+    // ==========================================
 
-      // Update only analytics.lastActive
-      if (!existingUser.analytics) {
-        existingUser.analytics = {
-          totalSearches: 0,
-          videosViewed: 0,
-          summariesGenerated: 0,
-          savedSummariesCount: 0,
-          lastActive: now,
-        };
-      } else {
-        existingUser.analytics.lastActive = now;
+    const decodedToken = await adminAuth.verifyIdToken(idToken);
+
+    const uid = decodedToken.uid;
+    const email = decodedToken.email || "";
+    const displayName = decodedToken.name || "";
+    const photoURL = decodedToken.picture || "";
+
+    // ==========================================
+    // SPLIT NAME
+    // ==========================================
+
+    const nameParts = displayName.trim().split(" ");
+
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ") || "";
+
+    // ==========================================
+    // FIND EXISTING USER
+    // ==========================================
+
+    let user = await User.findOne({ uid });
+
+    // ==========================================
+    // CREATE USER IF NOT EXISTS
+    // ==========================================
+
+    if (!user) {
+      user = await User.create({
+        uid,
+        email: email.toLowerCase(),
+
+        firstName,
+        lastName,
+
+        name: displayName,
+
+        photoURL,
+
+        recentSearches: [],
+
+        hoursSaved: 0,
+      });
+
+      console.log("NEW USER CREATED:", email);
+    } else {
+      // ========================================
+      // UPDATE EXISTING USER
+      // ========================================
+
+      user.email = email.toLowerCase();
+
+      if (displayName) {
+        user.name = displayName;
+        user.firstName = firstName;
+        user.lastName = lastName;
       }
 
-      await existingUser.save();
+      if (photoURL) {
+        user.photoURL = photoURL;
+      }
 
-      console.log("EXISTING USER SYNCED:", existingUser.email);
+      await user.save();
 
-      return NextResponse.json({
-        success: true,
-        user: existingUser,
-      });
+      console.log("EXISTING USER SYNCED:", email);
     }
 
-    // Create a new user
-    const newUser = await User.create({
-      uid,
-      firstName: firstName || "User",
-      lastName: lastName || "",
-      email: normalizedEmail,
-      photoURL: photoURL || "",
-
-      totalSummaries: 0,
-      hoursSaved: 0,
-      learningStreak: 0,
-
-      recentSearches: [],
-      savedSummaries: [],
-
-      analytics: {
-        totalSearches: 0,
-        videosViewed: 0,
-        summariesGenerated: 0,
-        savedSummariesCount: 0,
-        lastActive: now,
-      },
-    });
-
-    console.log("NEW USER CREATED:", newUser.email);
+    // ==========================================
+    // RESPONSE
+    // ==========================================
 
     return NextResponse.json({
       success: true,
-      user: newUser,
+
+      user: {
+        uid: user.uid,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        name: user.name,
+        photoURL: user.photoURL,
+      },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("USER SYNC ERROR:", error);
 
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to sync user",
+        error: error?.message || "Failed to sync user",
       },
       { status: 500 }
     );

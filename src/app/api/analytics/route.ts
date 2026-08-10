@@ -7,258 +7,328 @@ import { adminAuth } from "@/lib/firebaseAdmin";
 
 export async function GET(req: NextRequest) {
   try {
-    await connectDB();
-
     // ==========================================
-    // VERIFY FIREBASE AUTH
+    // 1. VERIFY FIREBASE AUTHENTICATION
     // ==========================================
 
-    const authHeader = req.headers.get("authorization");
+    const authorization = req.headers.get("authorization");
 
-    if (!authHeader?.startsWith("Bearer ")) {
+    if (!authorization?.startsWith("Bearer ")) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        {
+          success: false,
+          error: "Unauthorized",
+        },
         { status: 401 }
       );
     }
 
-    const token = authHeader.split("Bearer ")[1];
+    const idToken = authorization.substring(7).trim();
 
-    const decodedToken = await adminAuth.verifyIdToken(token);
-
-    const uid = decodedToken.uid;
-
-    // ==========================================
-    // FIND CURRENT USER
-    // ==========================================
-
-    const user = await User.findOne({ uid }).lean();
-
-    if (!user) {
+    if (!idToken) {
       return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
+        {
+          success: false,
+          error: "Unauthorized",
+        },
+        { status: 401 }
+      );
+    }
+
+    const decodedToken = await adminAuth.verifyIdToken(idToken);
+
+    const email = decodedToken.email?.toLowerCase();
+
+    // ==========================================
+    // 2. VERIFY ADMIN
+    // ==========================================
+
+    const adminEmail1 =
+      process.env.ADMIN_EMAIL_1?.trim().toLowerCase();
+
+    const adminEmail2 =
+      process.env.ADMIN_EMAIL_2?.trim().toLowerCase();
+
+    const isAdmin =
+      !!email &&
+      (
+        email === adminEmail1 ||
+        email === adminEmail2
+      );
+
+    if (!isAdmin) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Admin access denied",
+        },
+        { status: 403 }
       );
     }
 
     // ==========================================
-    // SEARCH DATA
+    // 3. CONNECT TO MONGODB
     // ==========================================
 
-    const searches = user.recentSearches || [];
-
-    const totalSearches = searches.length;
+    await connectDB();
 
     // ==========================================
-    // SUMMARY DATA
+    // 4. GET ALL USERS
     // ==========================================
 
-    const summaries = await SavedSummary.find({
-      userId: uid,
-    })
+    const users = await User.find({})
       .sort({ createdAt: -1 })
       .lean();
 
-    const totalSummaries = summaries.length;
-
     // ==========================================
-    // UNIQUE TOPICS
+    // 5. GET ALL SAVED SUMMARIES
     // ==========================================
 
-    const topicMap = new Map<string, number>();
-
-    searches.forEach((search: any) => {
-      const query = String(search.query || "").trim();
-
-      if (!query) return;
-
-      const key = query.toLowerCase();
-
-      topicMap.set(
-        key,
-        (topicMap.get(key) || 0) + 1
-      );
-    });
-
-    const topics = Array.from(topicMap.entries())
-      .map(([name, count]) => ({
-        name,
-        count,
-      }))
-      .sort((a, b) => b.count - a.count);
-
-    const totalTopics = topics.length;
+    const savedSummaries = await SavedSummary.find({})
+      .sort({ createdAt: -1 })
+      .lean();
 
     // ==========================================
-    // TOPIC PERCENTAGES
+    // 6. PLATFORM TOTALS
     // ==========================================
 
-    const maxTopicCount =
-      topics.length > 0
-        ? Math.max(...topics.map((topic) => topic.count))
-        : 1;
+    const totalUsers = users.length;
 
-    const topicAnalytics = topics
-      .slice(0, 5)
-      .map((topic) => ({
-        name: topic.name,
-        count: topic.count,
-        percent: Math.round(
-          (topic.count / maxTopicCount) * 100
-        ),
-      }));
+    const totalSearches = users.reduce(
+      (total: number, user: any) => {
+        const recentSearches = Array.isArray(
+          user.recentSearches
+        )
+          ? user.recentSearches
+          : [];
 
-    // ==========================================
-    // LAST 7 DAYS ACTIVITY
-    // ==========================================
-
-    const today = new Date();
-
-    const weeklyActivity = [];
-
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today);
-
-      date.setHours(0, 0, 0, 0);
-      date.setDate(today.getDate() - i);
-
-      const nextDate = new Date(date);
-      nextDate.setDate(date.getDate() + 1);
-
-      const searchCount = searches.filter((search: any) => {
-        if (!search.createdAt) return false;
-
-        const createdAt = new Date(search.createdAt);
-
-        return (
-          createdAt >= date &&
-          createdAt < nextDate
-        );
-      }).length;
-
-      const summaryCount = summaries.filter((summary: any) => {
-        if (!summary.createdAt) return false;
-
-        const createdAt = new Date(summary.createdAt);
-
-        return (
-          createdAt >= date &&
-          createdAt < nextDate
-        );
-      }).length;
-
-      weeklyActivity.push({
-        day: date.toLocaleDateString("en-US", {
-          weekday: "short",
-        }),
-        date: date.toISOString().split("T")[0],
-        searches: searchCount,
-        summaries: summaryCount,
-        value: searchCount + summaryCount,
-      });
-    }
-
-    // ==========================================
-    // RECENT LEARNING
-    // ==========================================
-
-    const recentSearchActivities = searches
-      .map((search: any, index: number) => ({
-        id: `search-${index}`,
-        title: search.query || "Untitled Search",
-        description: "Search query",
-        type: "Search",
-        createdAt: search.createdAt
-          ? new Date(search.createdAt)
-          : new Date(0),
-      }));
-
-    const recentSummaryActivities = summaries.map(
-      (summary: any) => ({
-        id: String(summary._id),
-        title: summary.title || "Untitled Summary",
-        description: "Generated summary",
-        type: "Summary",
-        createdAt: summary.createdAt
-          ? new Date(summary.createdAt)
-          : new Date(0),
-      })
-    );
-
-    const recentLearning = [
-      ...recentSearchActivities,
-      ...recentSummaryActivities,
-    ]
-      .sort(
-        (a, b) =>
-          b.createdAt.getTime() -
-          a.createdAt.getTime()
-      )
-      .slice(0, 5)
-      .map((item) => ({
-        ...item,
-        time: item.createdAt.toISOString(),
-      }));
-
-    // ==========================================
-    // TIME SAVED
-    // ==========================================
-
-    const hoursSaved = Number(user.hoursSaved || 0);
-
-    // ==========================================
-    // WEEKLY ACTIVITY
-    // ==========================================
-
-    const weeklyTotal = weeklyActivity.reduce(
-      (total, day) => total + day.value,
+        return total + recentSearches.length;
+      },
       0
     );
 
-    // Activity percentage is based on weekly activity.
-    // 20 activities/week = 100%.
-    const activityPercent = Math.min(
-      100,
-      Math.round((weeklyTotal / 20) * 100)
-    );
+    const totalSummaries = savedSummaries.length;
+
+    const totalSavedSummaries = savedSummaries.length;
 
     // ==========================================
-    // RESPONSE
+    // 7. CREATE USER ANALYTICS
+    // ==========================================
+
+    const userAnalytics = users.map((user: any) => {
+      const recentSearches = Array.isArray(
+        user.recentSearches
+      )
+        ? user.recentSearches
+        : [];
+
+      // Summaries belonging to this user
+      const userSummaries = savedSummaries.filter(
+        (summary: any) =>
+          String(summary.userId) === String(user.uid)
+      );
+
+      // ========================================
+      // FIND LAST SEARCH
+      // ========================================
+
+      let latestSearchDate: Date | null = null;
+
+      for (const search of recentSearches) {
+        if (!search?.createdAt) continue;
+
+        const date = new Date(search.createdAt);
+
+        if (Number.isNaN(date.getTime())) continue;
+
+        if (
+          !latestSearchDate ||
+          date.getTime() > latestSearchDate.getTime()
+        ) {
+          latestSearchDate = date;
+        }
+      }
+
+      // ========================================
+      // FIND LAST SUMMARY
+      // ========================================
+
+      let latestSummaryDate: Date | null = null;
+
+      for (const summary of userSummaries) {
+        if (!summary?.createdAt) continue;
+
+        const date = new Date(summary.createdAt);
+
+        if (Number.isNaN(date.getTime())) continue;
+
+        if (
+          !latestSummaryDate ||
+          date.getTime() > latestSummaryDate.getTime()
+        ) {
+          latestSummaryDate = date;
+        }
+      }
+
+      // ========================================
+      // DETERMINE LAST ACTIVE
+      // ========================================
+
+      let lastActive: Date | undefined;
+
+      if (
+        latestSearchDate &&
+        latestSummaryDate
+      ) {
+        lastActive =
+          latestSearchDate.getTime() >
+          latestSummaryDate.getTime()
+            ? latestSearchDate
+            : latestSummaryDate;
+      } else if (latestSearchDate) {
+        lastActive = latestSearchDate;
+      } else if (latestSummaryDate) {
+        lastActive = latestSummaryDate;
+      } else if (user.updatedAt) {
+        const updatedDate = new Date(user.updatedAt);
+
+        if (!Number.isNaN(updatedDate.getTime())) {
+          lastActive = updatedDate;
+        }
+      }
+
+      // ========================================
+      // USER NAME
+      // ========================================
+
+      const fullName = [
+        user.firstName,
+        user.lastName,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+      const name =
+        user.name ||
+        fullName ||
+        user.displayName ||
+        "Unknown User";
+
+      // ========================================
+      // USER UID
+      // ========================================
+
+      const uid =
+        user.uid ||
+        String(user._id);
+
+      // ========================================
+      // PHOTO
+      // ========================================
+
+      const photoURL =
+        user.photoURL ||
+        user.profilePicture ||
+        user.image ||
+        undefined;
+
+      // ========================================
+      // CREATED DATE
+      // ========================================
+
+      let createdAt: string | undefined;
+
+      if (user.createdAt) {
+        const createdDate = new Date(user.createdAt);
+
+        if (!Number.isNaN(createdDate.getTime())) {
+          createdAt = createdDate.toISOString();
+        }
+      }
+
+      // ========================================
+      // RETURN USER ANALYTICS
+      // ========================================
+
+      return {
+        uid,
+        name,
+        email: user.email || "",
+        photoURL,
+
+        searches: recentSearches.length,
+
+        summaries: userSummaries.length,
+
+        savedSummaries: userSummaries.length,
+
+        lastActive: lastActive
+          ? lastActive.toISOString()
+          : undefined,
+
+        createdAt,
+      };
+    });
+
+    // ==========================================
+    // 8. FINAL RESPONSE
     // ==========================================
 
     return NextResponse.json({
       success: true,
 
-     analytics: {
-  topicsExplored: totalTopics,
+      stats: {
+        totalUsers,
+        totalSearches,
+        totalSummaries,
+        totalSavedSummaries,
+      },
 
-  summariesGenerated: totalSummaries,
-
-  searches: totalSearches,
-
-  timeSaved: hoursSaved,
-
-  savedItems: totalSummaries,
-
-  activityPercent,
-
-  weeklyActivity,
-
-  topics: topicAnalytics,
-
-  recentLearning,
-},
+      users: userAnalytics,
     });
-  } catch (error) {
-    console.error("ANALYTICS API ERROR:", error);
+  } catch (error: any) {
+    console.error(
+      "ANALYTICS API ERROR:",
+      error
+    );
+
+    // ==========================================
+    // FIREBASE AUTH ERRORS
+    // ==========================================
+
+    if (
+      error?.code ===
+        "auth/id-token-expired" ||
+      error?.code ===
+        "auth/id-token-revoked" ||
+      error?.code ===
+        "auth/invalid-id-token" ||
+      error?.code ===
+        "auth/argument-error"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid or expired authentication token",
+        },
+        { status: 401 }
+      );
+    }
+
+    // ==========================================
+    // GENERAL ERROR
+    // ==========================================
 
     return NextResponse.json(
       {
-        error: "Failed to load analytics",
+        success: false,
+        error:
+          error?.message ||
+          "Failed to load analytics",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }

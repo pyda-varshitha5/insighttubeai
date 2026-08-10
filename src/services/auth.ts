@@ -53,12 +53,14 @@ export async function signInWithGoogle() {
 
   const lastName =
     nameParts.join(" ");
+const idToken = await user.getIdToken();
 
-  const response = await fetch("/api/user/sync", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+const response = await fetch("/api/user/sync", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${idToken}`,
+  },
     body: JSON.stringify({
       uid: user.uid,
       firstName,

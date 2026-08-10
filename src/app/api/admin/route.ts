@@ -1,56 +1,170 @@
-import { NextRequest, NextResponse } from "next/server";
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server";
+
 import { adminAuth } from "@/lib/firebaseAdmin";
 
-export async function POST(request: NextRequest) {
-  try {
-    const authorization = request.headers.get("authorization");
+// ======================================================
+// POST - VERIFY ADMIN
+// ======================================================
 
-    if (!authorization?.startsWith("Bearer ")) {
+export async function POST(
+  request: NextRequest
+) {
+  try {
+    // --------------------------------------------------
+    // GET AUTHORIZATION HEADER
+    // --------------------------------------------------
+
+    const authorization =
+      request.headers.get(
+        "authorization"
+      );
+
+    if (
+      !authorization ||
+      !authorization.startsWith(
+        "Bearer "
+      )
+    ) {
       return NextResponse.json(
-        { authorized: false, error: "Unauthorized" },
-        { status: 401 }
+        {
+          authorized: false,
+          error: "Unauthorized",
+        },
+        {
+          status: 401,
+        }
       );
     }
 
-    const idToken = authorization.substring(7);
+    // --------------------------------------------------
+    // GET FIREBASE TOKEN
+    // --------------------------------------------------
 
-    const decodedToken = await adminAuth.verifyIdToken(idToken);
+    const idToken =
+      authorization.substring(7).trim();
 
-    const email = decodedToken.email?.toLowerCase();
+    if (!idToken) {
+      return NextResponse.json(
+        {
+          authorized: false,
+          error: "Missing authentication token",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    // --------------------------------------------------
+    // VERIFY FIREBASE TOKEN
+    // --------------------------------------------------
+
+    const decodedToken =
+      await adminAuth.verifyIdToken(
+        idToken
+      );
+
+    const email =
+      decodedToken.email?.toLowerCase();
+
+    if (!email) {
+      return NextResponse.json(
+        {
+          authorized: false,
+          error:
+            "Authenticated user has no email",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    // --------------------------------------------------
+    // ADMIN EMAILS
+    // --------------------------------------------------
 
     const adminEmail1 =
-      process.env.ADMIN_EMAIL_1?.toLowerCase();
+      process.env.ADMIN_EMAIL_1
+        ?.trim()
+        .toLowerCase();
 
     const adminEmail2 =
-      process.env.ADMIN_EMAIL_2?.toLowerCase();
+      process.env.ADMIN_EMAIL_2
+        ?.trim()
+        .toLowerCase();
+
+    // --------------------------------------------------
+    // CHECK ADMIN
+    // --------------------------------------------------
 
     const isAdmin =
-      !!email &&
-      (email === adminEmail1 || email === adminEmail2);
+      email === adminEmail1 ||
+      email === adminEmail2;
+
+    console.log(
+      "Admin verification:",
+      {
+        email,
+        isAdmin,
+      }
+    );
 
     if (!isAdmin) {
       return NextResponse.json(
         {
           authorized: false,
-          error: "Admin access denied",
+          error:
+            "Admin access denied",
         },
-        { status: 403 }
+        {
+          status: 403,
+        }
       );
     }
+
+    // --------------------------------------------------
+    // ADMIN SUCCESS
+    // --------------------------------------------------
 
     return NextResponse.json({
       authorized: true,
       email,
     });
   } catch (error) {
-    console.error("Admin verification error:", error);
+    console.error(
+      "Admin verification error:",
+      error
+    );
 
     return NextResponse.json(
       {
         authorized: false,
-        error: "Invalid authentication",
+        error:
+          "Invalid authentication",
       },
-      { status: 401 }
+      {
+        status: 401,
+      }
     );
   }
+}
+
+// ======================================================
+// GET
+// ======================================================
+
+export async function GET() {
+  return NextResponse.json(
+    {
+      error:
+        "Use POST for admin authentication",
+    },
+    {
+      status: 405,
+    }
+  );
 }

@@ -56,6 +56,7 @@ useEffect(() => {
   e.preventDefault();
 
   setError("");
+  setAdminLoginError("");
 
   if (!email.trim()) {
     setError("Email is required.");
@@ -70,33 +71,87 @@ useEffect(() => {
   try {
     setLoading(true);
 
-    const userCredential = await loginUser(email, password);
+    // ==================================================
+    // FIREBASE LOGIN
+    // ==================================================
 
-if (activeTab === "admin") {
-  const idToken = await userCredential.user.getIdToken();
+    const userCredential = await loginUser(
+      email.trim(),
+      password
+    );
 
-  const response = await fetch("/api/admin", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${idToken}`,
-    },
-  });
+    const firebaseUser = userCredential.user;
 
-  const data = await response.json();
+    // ==================================================
+    // ADMIN LOGIN
+    // ==================================================
 
-  if (!response.ok || !data.authorized) {
-    await userCredential.user.getIdToken(true);
+    if (activeTab === "admin") {
+      console.log(
+        "Checking admin access for:",
+        firebaseUser.email
+      );
 
-    setError("You are not authorized to access the admin panel.");
-    return;
-  }
+      // Get fresh Firebase ID token
+      const idToken = await firebaseUser.getIdToken(true);
 
-  router.push("/admin/dashboard");
-} else {
-  router.push("/dashboard");
-}
+      // Verify admin on server
+      const response = await fetch("/api/admin", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+
+      const data = await response.json();
+
+      console.log("Admin check:", data);
+
+      // ------------------------------------------------
+      // NOT ADMIN
+      // ------------------------------------------------
+
+      if (!response.ok || !data.authorized) {
+        setError(
+          "You are not authorized to access the admin panel."
+        );
+
+        return;
+      }
+
+      // ------------------------------------------------
+      // ADMIN VERIFIED
+      // ------------------------------------------------
+
+      console.log(
+        "Admin verified. Opening dashboard..."
+      );
+
+      // Remove any previous admin login flags
+      // Admin login should go through Google authentication
+// Remove any previous admin login error
+localStorage.removeItem("adminLoginError");
+
+// Start Google login
+localStorage.setItem("adminLoginIntent", "true");
+
+await signInWithGoogle();
+
+return;
+    }
+
+    // ==================================================
+    // NORMAL USER LOGIN
+    // ==================================================
+
+    localStorage.removeItem("adminLoginIntent");
+
+    router.replace("/dashboard");
+
   } catch (error: any) {
-    switch (error.code) {
+    console.error("Login error:", error);
+
+    switch (error?.code) {
       case "auth/invalid-credential":
       case "auth/wrong-password":
         setError("Incorrect email or password.");
@@ -110,8 +165,17 @@ if (activeTab === "admin") {
         setError("Invalid email.");
         break;
 
+      case "auth/too-many-requests":
+        setError(
+          "Too many login attempts. Please try again later."
+        );
+        break;
+
       default:
-        setError(error.message);
+        setError(
+          error?.message ||
+            "Login failed. Please try again."
+        );
     }
   } finally {
     setLoading(false);
@@ -179,8 +243,9 @@ const handleGoogleLogin = async () => {
               type="button"
 onClick={() => {
   setActiveTab("admin");
-  localStorage.setItem("adminLoginIntent", "true");
-}}              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+  setError("");
+  setAdminLoginError("");
+}}             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === "admin"
                   ? "bg-white text-violet-600 shadow-sm"
                   : "text-slate-500"

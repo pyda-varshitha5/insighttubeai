@@ -8,6 +8,11 @@ import {
   TrendingUp,
   CalendarDays,
 } from "lucide-react";
+import { useAuth } from "@/context/AuthProvider";
+
+// ======================================================
+// TYPES
+// ======================================================
 
 type UserAnalytics = {
   uid: string;
@@ -32,6 +37,10 @@ type AnalyticsData = {
   users: UserAnalytics[];
 };
 
+// ======================================================
+// STAT CARD
+// ======================================================
+
 function StatCard({
   title,
   value,
@@ -47,7 +56,9 @@ function StatCard({
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between">
         <div>
-          <p className="mb-2 text-xs text-slate-500">{title}</p>
+          <p className="mb-2 text-xs text-slate-500">
+            {title}
+          </p>
 
           <h2 className="text-2xl font-semibold text-slate-900">
             {value.toLocaleString()}
@@ -68,48 +79,120 @@ function StatCard({
   );
 }
 
+// ======================================================
+// USER STATUS
+// ======================================================
+
 function getStatus(lastActive?: string) {
-  if (!lastActive) return "Inactive";
+  if (!lastActive) {
+    return "Inactive";
+  }
 
   const last = new Date(lastActive).getTime();
+
+  if (Number.isNaN(last)) {
+    return "Inactive";
+  }
+
   const now = Date.now();
 
-  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  const sevenDays =
+    7 * 24 * 60 * 60 * 1000;
 
-  return now - last <= sevenDays ? "Active" : "Inactive";
+  return now - last <= sevenDays
+    ? "Active"
+    : "Inactive";
 }
+
+// ======================================================
+// FORMAT DATE
+// ======================================================
 
 function formatDate(date?: string) {
-  if (!date) return "Never";
+  if (!date) {
+    return "Never";
+  }
 
-  return new Date(date).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "Never";
+  }
+
+  return parsedDate.toLocaleDateString(
+    "en-IN",
+    {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }
+  );
 }
 
-function formatLastActive(date?: string) {
-  if (!date) return "Never";
+// ======================================================
+// FORMAT LAST ACTIVE
+// ======================================================
 
-  const last = new Date(date).getTime();
+function formatLastActive(date?: string) {
+  if (!date) {
+    return "Never";
+  }
+
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "Never";
+  }
+
+  const last = parsedDate.getTime();
   const now = Date.now();
 
   const difference = now - last;
 
-  const minutes = Math.floor(difference / (1000 * 60));
-  const hours = Math.floor(difference / (1000 * 60 * 60));
-  const days = Math.floor(difference / (1000 * 60 * 60 * 24));
+  const minutes = Math.floor(
+    difference / (1000 * 60)
+  );
 
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes} min ago`;
-  if (hours < 24) return `${hours} hr ago`;
-  if (days < 7) return `${days} day${days === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(
+    difference / (1000 * 60 * 60)
+  );
 
-  return new Date(date).toLocaleDateString("en-IN");
+  const days = Math.floor(
+    difference / (1000 * 60 * 60 * 24)
+  );
+
+  if (minutes < 1) {
+    return "Just now";
+  }
+
+  if (minutes < 60) {
+    return `${minutes} min ago`;
+  }
+
+  if (hours < 24) {
+    return `${hours} hr ago`;
+  }
+
+  if (days < 7) {
+    return `${days} day${
+      days === 1 ? "" : "s"
+    } ago`;
+  }
+
+  return parsedDate.toLocaleDateString(
+    "en-IN"
+  );
 }
 
-function MiniChart({ data }: { data: number[] }) {
+// ======================================================
+// MINI CHART
+// ======================================================
+
+function MiniChart({
+  data,
+}: {
+  data: number[];
+}) {
   const width = 300;
   const height = 100;
 
@@ -129,11 +212,15 @@ function MiniChart({ data }: { data: number[] }) {
       const x =
         data.length === 1
           ? width / 2
-          : (index / (data.length - 1)) * width;
+          : (index /
+              (data.length - 1)) *
+            width;
 
       const y =
         height -
-        ((value - min) / (max - min || 1)) * (height - 20) -
+        ((value - min) /
+          (max - min || 1)) *
+          (height - 20) -
         10;
 
       return `${x},${y}`;
@@ -161,11 +248,15 @@ function MiniChart({ data }: { data: number[] }) {
           const x =
             data.length === 1
               ? width / 2
-              : (index / (data.length - 1)) * width;
+              : (index /
+                  (data.length - 1)) *
+                width;
 
           const y =
             height -
-            ((value - min) / (max - min || 1)) * (height - 20) -
+            ((value - min) /
+              (max - min || 1)) *
+              (height - 20) -
             10;
 
           return (
@@ -183,44 +274,180 @@ function MiniChart({ data }: { data: number[] }) {
   );
 }
 
+// ======================================================
+// ADMIN DASHBOARD
+// ======================================================
+
 export default function AdminDashboardPage() {
-  const [data, setData] = useState<AnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  // IMPORTANT:
+  // We now get BOTH user and auth loading state.
+  const {
+    user,
+    loading: authLoading,
+  } = useAuth();
+
+  const [data, setData] =
+    useState<AnalyticsData | null>(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
+
+  // ====================================================
+  // FETCH ANALYTICS
+  // ====================================================
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchAnalytics = async () => {
       try {
-        setLoading(true);
-        setError("");
+        // ------------------------------------------------
+        // WAIT FOR FIREBASE AUTH
+        // ------------------------------------------------
 
-        const response = await fetch("/api/analytics", {
-          cache: "no-store",
-        });
+        if (authLoading) {
+          return;
+        }
+
+        // ------------------------------------------------
+        // FIREBASE FINISHED LOADING
+        // BUT THERE IS NO USER
+        // ------------------------------------------------
+
+        if (!user) {
+          if (!cancelled) {
+            setError("Please login again.");
+            setLoading(false);
+          }
+
+          return;
+        }
+
+        if (!cancelled) {
+          setLoading(true);
+          setError("");
+        }
+
+        // ------------------------------------------------
+        // GET FRESH FIREBASE TOKEN
+        // ------------------------------------------------
+
+        const token =
+          await user.getIdToken(true);
+
+        if (!token) {
+          throw new Error(
+            "Authentication token not available."
+          );
+        }
+
+        console.log(
+          "Fetching admin analytics..."
+        );
+
+        // ------------------------------------------------
+        // CALL ANALYTICS API
+        // ------------------------------------------------
+
+        const response =
+          await fetch(
+            "/api/analytics",
+            {
+              method: "GET",
+
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+
+                "Content-Type":
+                  "application/json",
+              },
+
+              cache: "no-store",
+            }
+          );
+
+        const result =
+          await response.json();
+
+        console.log(
+          "Admin Dashboard Analytics:",
+          result
+        );
+
+        // ------------------------------------------------
+        // API ERROR
+        // ------------------------------------------------
 
         if (!response.ok) {
-          throw new Error("Failed to fetch analytics");
+          throw new Error(
+            result?.error ||
+              `Analytics request failed (${response.status})`
+          );
         }
-
-        const result = await response.json();
-
-        console.log("Admin Dashboard Analytics:", result);
 
         if (!result.success) {
-          throw new Error("Analytics request failed");
+          throw new Error(
+            result?.error ||
+              "Analytics request failed"
+          );
         }
 
-        setData(result);
+        // ------------------------------------------------
+        // SAVE DATA
+        // ------------------------------------------------
+
+        if (!cancelled) {
+          setData(result);
+          setError("");
+        }
       } catch (err) {
-        console.error("Dashboard analytics error:", err);
-        setError("Failed to load dashboard data.");
+        console.error(
+          "Dashboard analytics error:",
+          err
+        );
+
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to load dashboard data."
+          );
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled && !authLoading) {
+          setLoading(false);
+        }
       }
     };
 
     fetchAnalytics();
-  }, []);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, authLoading]);
+
+  // ====================================================
+  // AUTH LOADING
+  // ====================================================
+
+  if (authLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="text-sm text-slate-500">
+          Loading admin dashboard...
+        </div>
+      </main>
+    );
+  }
+
+  // ====================================================
+  // DATA LOADING
+  // ====================================================
 
   if (loading) {
     return (
@@ -232,35 +459,61 @@ export default function AdminDashboardPage() {
     );
   }
 
+  // ====================================================
+  // ERROR
+  // ====================================================
+
   if (error || !data) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="rounded-xl border border-red-200 bg-white px-6 py-5 text-sm text-red-600 shadow-sm">
-          {error || "Failed to load dashboard."}
+          {error ||
+            "Failed to load dashboard."}
         </div>
       </main>
     );
   }
 
-  const activeUsers = data.users.filter(
-    (user) => getStatus(user.lastActive) === "Active"
-  ).length;
+  // ====================================================
+  // ACTIVE USERS
+  // ====================================================
 
-  /*
-   * These values are based on real users returned by /api/analytics.
-   * We are intentionally not using fake sample numbers.
-   */
-  const registrationData = data.users.map(() => 1);
+  const activeUsers =
+    data.users.filter(
+      (user) =>
+        getStatus(user.lastActive) ===
+        "Active"
+    ).length;
 
-const searchData = data.users.map((user) => user.searches);
+  // ====================================================
+  // CHART DATA
+  // ====================================================
 
-const summaryData = data.users.map((user) => user.summaries);
+  const registrationData =
+    data.users.map(() => 1);
+
+  const searchData =
+    data.users.map(
+      (user) => user.searches
+    );
+
+  const summaryData =
+    data.users.map(
+      (user) => user.summaries
+    );
+
+  // ====================================================
+  // PAGE
+  // ====================================================
 
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-7">
       <div className="mx-auto max-w-7xl">
 
-        {/* Header */}
+        {/* ============================================
+            HEADER
+        ============================================ */}
+
         <div className="mb-7 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">
@@ -275,34 +528,46 @@ const summaryData = data.users.map((user) => user.summaries);
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600">
             <CalendarDays size={16} />
 
-            {new Date().toLocaleDateString("en-IN", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            })}
+            {new Date().toLocaleDateString(
+              "en-IN",
+              {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              }
+            )}
           </div>
         </div>
 
-        {/* Statistics */}
+        {/* ============================================
+            STATISTICS
+        ============================================ */}
+
         <div className="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
           <StatCard
             title="Total Users"
-            value={data.stats.totalUsers}
+            value={
+              data.stats.totalUsers
+            }
             icon={Users}
             iconClass="bg-violet-50 text-violet-600"
           />
 
           <StatCard
             title="Total Searches"
-            value={data.stats.totalSearches}
+            value={
+              data.stats.totalSearches
+            }
             icon={Search}
             iconClass="bg-blue-50 text-blue-600"
           />
 
           <StatCard
             title="Summaries Generated"
-            value={data.stats.totalSummaries}
+            value={
+              data.stats.totalSummaries
+            }
             icon={FileText}
             iconClass="bg-emerald-50 text-emerald-600"
           />
@@ -316,7 +581,10 @@ const summaryData = data.users.map((user) => user.summaries);
 
         </div>
 
-        {/* Users Overview */}
+        {/* ============================================
+            USERS OVERVIEW
+        ============================================ */}
+
         <section className="mb-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
           <div className="border-b border-slate-100 px-5 py-4">
@@ -374,82 +642,118 @@ const summaryData = data.users.map((user) => user.summaries);
                     </td>
                   </tr>
                 ) : (
-                  data.users.map((user) => {
+                  data.users.map(
+                    (user) => {
+                      const status =
+                        getStatus(
+                          user.lastActive
+                        );
 
-                    const status = getStatus(user.lastActive);
+                      return (
+                        <tr
+                          key={user.uid}
+                          className="border-t border-slate-100"
+                        >
 
-                    return (
-                      <tr
-                        key={user.uid}
-                        className="border-t border-slate-100"
-                      >
+                          {/* USER */}
 
-                        <td className="px-5 py-3.5 font-medium text-slate-800">
-                          <div className="flex items-center gap-3">
+                          <td className="px-5 py-3.5 font-medium text-slate-800">
+                            <div className="flex items-center gap-3">
 
-                            {user.photoURL ? (
-                              <img
-                                src={user.photoURL}
-                                alt={user.name}
-                                className="h-9 w-9 rounded-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 font-semibold text-violet-600">
-                                {user.name?.charAt(0)?.toUpperCase() ||
-                                  "U"}
-                              </div>
+                              {user.photoURL ? (
+                                <img
+                                  src={
+                                    user.photoURL
+                                  }
+                                  alt={
+                                    user.name
+                                  }
+                                  className="h-9 w-9 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 font-semibold text-violet-600">
+                                  {user.name
+                                    ?.charAt(
+                                      0
+                                    )
+                                    ?.toUpperCase() ||
+                                    "U"}
+                                </div>
+                              )}
+
+                              {user.name}
+
+                            </div>
+                          </td>
+
+                          {/* EMAIL */}
+
+                          <td className="px-5 py-3.5 text-slate-500">
+                            {user.email}
+                          </td>
+
+                          {/* JOINED */}
+
+                          <td className="px-5 py-3.5 text-slate-500">
+                            {formatDate(
+                              user.createdAt
                             )}
+                          </td>
 
-                            {user.name}
-                          </div>
-                        </td>
+                          {/* SUMMARIES */}
 
-                        <td className="px-5 py-3.5 text-slate-500">
-                          {user.email}
-                        </td>
-<td className="px-5 py-3.5 text-slate-500">
-  {formatDate(user.createdAt)}
-</td>
+                          <td className="px-5 py-3.5 text-slate-600">
+                            {
+                              user.summaries
+                            }
+                          </td>
 
-                        <td className="px-5 py-3.5 text-slate-600">
-                          {user.summaries}
-                        </td>
+                          {/* SEARCHES */}
 
-                        <td className="px-5 py-3.5 text-slate-600">
-                          {user.searches}
-                        </td>
+                          <td className="px-5 py-3.5 text-slate-600">
+                            {
+                              user.searches
+                            }
+                          </td>
 
-                        <td className="px-5 py-3.5 text-slate-500">
-                          {formatLastActive(user.lastActive)}
-                        </td>
+                          {/* LAST ACTIVE */}
 
-                        <td className="px-5 py-3.5">
+                          <td className="px-5 py-3.5 text-slate-500">
+                            {formatLastActive(
+                              user.lastActive
+                            )}
+                          </td>
 
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
-                              status === "Active"
-                                ? "bg-emerald-50 text-emerald-600"
-                                : "bg-slate-100 text-slate-500"
-                            }`}
-                          >
-                            {status}
-                          </span>
+                          {/* STATUS */}
 
-                        </td>
+                          <td className="px-5 py-3.5">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+                                status ===
+                                "Active"
+                                  ? "bg-emerald-50 text-emerald-600"
+                                  : "bg-slate-100 text-slate-500"
+                              }`}
+                            >
+                              {status}
+                            </span>
+                          </td>
 
-                      </tr>
-                    );
-                  })
+                        </tr>
+                      );
+                    }
+                  )
                 )}
 
               </tbody>
-
             </table>
           </div>
-
         </section>
 
-        {/* Analytics */}
+        {/* ============================================
+            ANALYTICS
+        ============================================ */}
+
         <section>
 
           <h2 className="mb-4 font-semibold text-slate-900">
@@ -458,56 +762,84 @@ const summaryData = data.users.map((user) => user.summaries);
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
 
-            {/* Registrations */}
+            {/* REGISTRATIONS */}
+
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
 
               <p className="mb-3 text-xs text-slate-500">
                 User Registrations
               </p>
 
-              <MiniChart data={registrationData} />
+              <MiniChart
+                data={
+                  registrationData
+                }
+              />
 
               <div className="mt-2 flex justify-between text-[10px] text-slate-400">
                 <span>Users</span>
-                <span>{data.users.length} total</span>
+
+                <span>
+                  {data.users.length}{" "}
+                  total
+                </span>
               </div>
 
             </div>
 
-            {/* Searches */}
+            {/* SEARCHES */}
+
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
 
               <p className="mb-3 text-xs text-slate-500">
                 Searches by User
               </p>
 
-              <MiniChart data={searchData} />
+              <MiniChart
+                data={searchData}
+              />
 
               <div className="mt-2 flex justify-between text-[10px] text-slate-400">
                 <span>Users</span>
-                <span>{data.stats.totalSearches} total</span>
+
+                <span>
+                  {
+                    data.stats
+                      .totalSearches
+                  }{" "}
+                  total
+                </span>
               </div>
 
             </div>
 
-            {/* Summaries */}
+            {/* SUMMARIES */}
+
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
 
               <p className="mb-3 text-xs text-slate-500">
                 Summaries by User
               </p>
 
-              <MiniChart data={summaryData} />
+              <MiniChart
+                data={summaryData}
+              />
 
               <div className="mt-2 flex justify-between text-[10px] text-slate-400">
                 <span>Users</span>
-                <span>{data.stats.totalSummaries} total</span>
+
+                <span>
+                  {
+                    data.stats
+                      .totalSummaries
+                  }{" "}
+                  total
+                </span>
               </div>
 
             </div>
 
           </div>
-
         </section>
 
       </div>

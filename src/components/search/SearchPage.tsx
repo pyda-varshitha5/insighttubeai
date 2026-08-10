@@ -1,27 +1,18 @@
 "use client";
 
-import {
-  useState,
-  useEffect,
-  useRef,
-} from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 
 import SearchHero from "./SearchHero";
 import SearchResultsHeader from "./SearchResultsHeader";
 import SearchActionCards from "./SearchActionCards";
+import SearchFilter from "./SearchFilter";
 import RecentSearches from "./RecentSearches";
 import SuggestedSearches from "./SuggestedSearches";
 import VideoTable from "./VideoTable";
 import VideoPlayer from "./VideoPlayer";
 
-import { useSearchParams } from "next/navigation";
-
 import { useAuth } from "@/context/AuthProvider";
-
-
-// ======================================================
-// YOUTUBE VIDEO TYPE
-// ======================================================
 
 export interface YouTubeVideo {
   id: string;
@@ -35,529 +26,214 @@ export interface YouTubeVideo {
   url: string;
 }
 
-
-// ======================================================
-// SEARCH PAGE
-// ======================================================
-
 export default function SearchPage() {
+  const [query, setQuery] = useState("");
+  const [videos, setVideos] = useState<YouTubeVideo[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
 
-  // ====================================================
-  // STATE
-  // ====================================================
-
-  const [query, setQuery] =
-    useState<string>("");
-
-  const [videos, setVideos] =
-    useState<YouTubeVideo[]>([]);
-
-  const [loading, setLoading] =
-    useState<boolean>(false);
-
-  const [searched, setSearched] =
-    useState<boolean>(false);
-
-  const [
-    selectedVideo,
-    setSelectedVideo,
-  ] = useState<string | null>(null);
-
-
-  // ====================================================
-  // NEXT.JS SEARCH PARAMS
-  // ====================================================
-
-  const searchParams =
-    useSearchParams();
-
-
-  // ====================================================
-  // AUTH
-  // ====================================================
-
+  const searchParams = useSearchParams();
   const { user } = useAuth();
 
+  const lastSearchRef = useRef("");
 
-  // ====================================================
-  // PREVENT DUPLICATE SEARCHES
-  // ====================================================
+  const handleSearch = useCallback(
+    async (searchTerm?: string) => {
+      const q =
+        typeof searchTerm === "string"
+          ? searchTerm
+          : query;
 
-  const lastSearchRef =
-    useRef<string>("");
+      const normalizedQuery = q.trim().toLowerCase();
 
+      if (!normalizedQuery) {
+        return;
+      }
 
-  // ====================================================
-  // SEARCH FUNCTION
-  // ====================================================
+      // Wait until Firebase user is available
+      if (!user?.uid) {
+        console.log("User not loaded yet. Search cancelled.");
+        return;
+      }
 
-  async function handleSearch(
-    searchTerm?: string
-  ): Promise<void> {
+      // Prevent duplicate searches
+      if (lastSearchRef.current === normalizedQuery) {
+        console.log("Duplicate search skipped");
+        return;
+      }
 
-    // --------------------------------------------------
-    // GET SEARCH QUERY
-    // --------------------------------------------------
+      lastSearchRef.current = normalizedQuery;
 
-    const q =
-      typeof searchTerm === "string"
-        ? searchTerm
-        : query;
+      setLoading(true);
 
-
-    // --------------------------------------------------
-    // NORMALIZE QUERY
-    // --------------------------------------------------
-
-    const normalizedQuery =
-      q.trim().toLowerCase();
-
-
-    // --------------------------------------------------
-    // EMPTY QUERY
-    // --------------------------------------------------
-
-    if (!normalizedQuery) {
-      return;
-    }
-
-
-    // --------------------------------------------------
-    // CHECK USER
-    // --------------------------------------------------
-
-    if (!user?.uid) {
-
-      console.log(
-        "User not loaded yet. Search cancelled."
-      );
-
-      return;
-    }
-
-
-    // --------------------------------------------------
-    // PREVENT DUPLICATE SEARCH
-    // --------------------------------------------------
-
-    if (
-      lastSearchRef.current ===
-      normalizedQuery
-    ) {
-
-      console.log(
-        "Duplicate search skipped"
-      );
-
-      return;
-    }
-
-
-    // --------------------------------------------------
-    // SAVE LAST SEARCH
-    // --------------------------------------------------
-
-    lastSearchRef.current =
-      normalizedQuery;
-
-
-    // --------------------------------------------------
-    // START LOADING
-    // --------------------------------------------------
-
-    setLoading(true);
-
-
-    try {
-
-      // =================================================
-      // CALL YOUTUBE SEARCH API
-      // =================================================
-
-      const response =
-        await fetch(
+      try {
+        const response = await fetch(
           `/api/youtube/search?q=${encodeURIComponent(
             q
-          )}&userId=${encodeURIComponent(
-            user.uid
-          )}`
+          )}&userId=${encodeURIComponent(user.uid)}`
         );
 
+        if (!response.ok) {
+          let errorMessage = "Failed to fetch videos";
 
-      // =================================================
-      // CHECK API RESPONSE
-      // =================================================
+          try {
+            const error = await response.json();
 
-      if (!response.ok) {
+            console.error("API Error:", error);
 
-        let errorMessage =
-          "Failed to fetch videos.";
+            errorMessage =
+              error?.error ||
+              error?.message ||
+              errorMessage;
+          } catch {
+            // Ignore JSON parsing error
+          }
 
-        try {
-
-          const errorData =
-            await response.json();
-
-          errorMessage =
-            errorData?.error ||
-            errorData?.message ||
-            errorMessage;
-
-        } catch {
-          // Response was not JSON
+          throw new Error(errorMessage);
         }
 
+        const data = await response.json();
 
-        console.error(
-          "YouTube API Error:",
-          errorMessage
-        );
+        console.log("API Response:", data);
 
-
-        throw new Error(
-          errorMessage
-        );
-      }
-
-
-      // =================================================
-      // READ RESPONSE
-      // =================================================
-
-      const data =
-        await response.json();
-
-
-      console.log(
-        "YouTube API Response:",
-        data
-      );
-
-
-      // =================================================
-      // NORMALIZE VIDEO DATA
-      // =================================================
-
-      const videoData: YouTubeVideo[] =
-        Array.isArray(data)
+        /*
+         * Your API may return:
+         *   [...]
+         *
+         * or:
+         *   { videos: [...] }
+         */
+        const resultVideos: YouTubeVideo[] = Array.isArray(data)
           ? data
           : Array.isArray(data?.videos)
-            ? data.videos
-            : [];
+          ? data.videos
+          : [];
 
+        console.log("Videos:", resultVideos);
 
-      // =================================================
-      // UPDATE STATE
-      // =================================================
+        setQuery(q);
+        setVideos(resultVideos);
+        setSearched(true);
 
-      setQuery(q);
+        // Update progress/recent learning elsewhere in the app
+        window.dispatchEvent(new Event("progress-updated"));
+      } catch (error) {
+        console.error("Search error:", error);
 
-      setVideos(videoData);
-
-      setSearched(true);
-
-
-      // =================================================
-      // UPDATE PROGRESS
-      // =================================================
-
-      if (
-        typeof window !== "undefined"
-      ) {
-
-        window.dispatchEvent(
-          new Event(
-            "progress-updated"
-          )
-        );
-
+        setVideos([]);
+        setSearched(true);
+      } finally {
+        setLoading(false);
       }
+    },
+    [query, user?.uid]
+  );
 
-    } catch (error) {
-
-      console.error(
-        "Search error:",
-        error
-      );
-
-
-      // ------------------------------------------------
-      // SHOW EMPTY RESULTS
-      // ------------------------------------------------
-
-      setVideos([]);
-
-      setSearched(true);
-
-    } finally {
-
-      // ------------------------------------------------
-      // STOP LOADING
-      // ------------------------------------------------
-
-      setLoading(false);
-
-    }
-  }
-
-
-  // ====================================================
-  // SEARCH FROM URL
-  // ====================================================
-
+  /*
+   * Handle searches coming from URL:
+   *
+   * /search?q=react&results=true
+   *
+   * or:
+   *
+   * /search?topic=react&results=true
+   */
   useEffect(() => {
-
     const topic =
       searchParams.get("q") ||
       searchParams.get("topic");
 
-    const results =
-      searchParams.get("results");
-
-
-    // --------------------------------------------------
-    // ONLY RUN URL SEARCH WHEN:
-    //
-    // 1. topic exists
-    // 2. results=true
-    // 3. user is available
-    // --------------------------------------------------
+    const results = searchParams.get("results");
 
     if (
-      !topic ||
-      results !== "true" ||
-      !user?.uid
+      topic &&
+      results === "true" &&
+      user?.uid
     ) {
-      return;
+      handleSearch(topic);
     }
-
-
-    // --------------------------------------------------
-    // RESET DUPLICATE SEARCH PROTECTION
-    // --------------------------------------------------
-
-    lastSearchRef.current = "";
-
-
-    // --------------------------------------------------
-    // RUN SEARCH AFTER EFFECT
-    //
-    // This avoids calling state updates directly
-    // inside the effect body.
-    // --------------------------------------------------
-
-    const timer =
-      window.setTimeout(() => {
-
-        void handleSearch(topic);
-
-      }, 0);
-
-
-    // --------------------------------------------------
-    // CLEANUP
-    // --------------------------------------------------
-
-    return () => {
-
-      window.clearTimeout(timer);
-
-    };
-
-    // handleSearch intentionally omitted because
-    // it is a normal function and is recreated
-    // on every render.
-    //
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-
   }, [
     searchParams,
     user?.uid,
+    handleSearch,
   ]);
 
-
-  // ====================================================
-  // RECENT SEARCH HANDLER
-  // ====================================================
-
-  function handleRecentSearch(
-    text: string
-  ): void {
-
-    const cleanText =
-      text.trim();
-
-
-    if (!cleanText) {
-      return;
-    }
-
-
-    setQuery(cleanText);
-
-    lastSearchRef.current = "";
-
-    void handleSearch(cleanText);
-  }
-
-
-  // ====================================================
-  // SUGGESTED SEARCH HANDLER
-  // ====================================================
-
-  function handleSuggestedSearch(
-    text: string
-  ): void {
-
-    const cleanText =
-      text.trim();
-
-
-    if (!cleanText) {
-      return;
-    }
-
-
-    setQuery(cleanText);
-
-    lastSearchRef.current = "";
-
-    void handleSearch(cleanText);
-  }
-
-
-  // ====================================================
-  // RENDER
-  // ====================================================
-
   return (
-
     <div className="w-full">
-
-      {/* ==================================================
-          SEARCH HERO
-          ================================================== */}
-
+      {/* Search Hero */}
       <SearchHero
         query={query}
         setQuery={setQuery}
-        onSearch={handleSearch}
+        onSearch={() => handleSearch()}
         loading={loading}
       />
 
-
-      {/* ==================================================
-          SEARCH RESULTS HEADER
-          ================================================== */}
-
-      {searched && (
-
-        <SearchResultsHeader
-          query={query}
-        />
-
-      )}
-
-
-      {/* ==================================================
-          ACTION CARDS
-          ================================================== */}
-
-      {searched && (
-
-        <SearchActionCards
-          topic={query}
-        />
-
-      )}
-
-
-      {/* ==================================================
-          BEFORE SEARCH
-          ================================================== */}
-
       {!searched ? (
-
-        <div
-          className="
-            grid
-            grid-cols-1
-            gap-6
-            lg:grid-cols-2
-          "
-        >
-
-          {/* ==============================================
-              RECENT SEARCHES
-              ============================================== */}
-
-          <RecentSearches
-            onSelect={
-              handleRecentSearch
-            }
-          />
-
-
-          {/* ==============================================
-              SUGGESTED SEARCHES
-              ============================================== */}
-
-          <SuggestedSearches
-            onSelect={
-              handleSuggestedSearch
-            }
-          />
-
-        </div>
-
-      ) : (
-
-        /* =================================================
-           AFTER SEARCH
-           ================================================= */
-
         <>
+          {/* Recent and Suggested Searches */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <RecentSearches
+              onSelect={(text) => {
+                setQuery(text);
+                handleSearch(text);
+              }}
+            />
 
-          {/* ==============================================
-              VIDEO TABLE
-              ============================================== */}
-
-          <VideoTable
-            videos={videos}
-            loading={loading}
-            onPlay={(id) => {
-
-              setSelectedVideo(id);
-
-            }}
-          />
-
-
-          {/* ==============================================
-              VIDEO PLAYER
-              ============================================== */}
-
-          <VideoPlayer
-            videoId={
-              selectedVideo ?? ""
-            }
-
-            open={
-              selectedVideo !== null
-            }
-
-            onClose={() => {
-
-              setSelectedVideo(null);
-
-            }}
-          />
-
+            <SuggestedSearches
+              onSelect={(text) => {
+                setQuery(text);
+                handleSearch(text);
+              }}
+            />
+          </div>
         </>
+      ) : (
+        <>
+          {/* Search Results Header */}
+          <div className="mt-6">
+            <SearchResultsHeader
+  query={query}
+/>
+          </div>
 
+          {/* Search Action Cards */}
+          <div className="mt-6">
+            <SearchActionCards
+              topic={query}
+            />
+          </div>
+
+          {/* Search Filter */}
+          <div className="mt-6">
+            <SearchFilter
+              query={query}
+              setQuery={setQuery}
+              onSearch={() => handleSearch()}
+            />
+          </div>
+
+          {/* Search Results */}
+          <div className="mt-6">
+            <VideoTable
+              videos={videos}
+              loading={loading}
+              onPlay={(videoId: string) => {
+                setSelectedVideo(videoId);
+              }}
+            />
+          </div>
+
+          {/* Video Player */}
+          <VideoPlayer
+            videoId={selectedVideo ?? ""}
+            open={selectedVideo !== null}
+            onClose={() => {
+              setSelectedVideo(null);
+            }}
+          />
+        </>
       )}
-
     </div>
-
   );
 }

@@ -74,7 +74,6 @@ function LoadingDoc() {
   return (
     <div className="min-h-screen bg-white">
       <div className="mx-auto max-w-6xl px-6 py-12">
-
         <div className="mb-10">
           <div className="mb-4 h-10 w-2/3 animate-pulse rounded bg-gray-100" />
           <div className="h-4 w-1/3 animate-pulse rounded bg-gray-100" />
@@ -87,25 +86,22 @@ function LoadingDoc() {
         </div>
 
         <div className="space-y-8">
-          {Array.from({ length: 4 }).map(
-            (_, index) => (
-              <div
-                key={index}
-                className="animate-pulse"
-              >
-                <div className="mb-4 h-6 w-56 rounded bg-gray-100" />
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className="animate-pulse"
+            >
+              <div className="mb-4 h-6 w-56 rounded bg-gray-100" />
 
-                <div className="space-y-2.5">
-                  <div className="h-3 w-full rounded bg-gray-100" />
-                  <div className="h-3 w-11/12 rounded bg-gray-100" />
-                  <div className="h-3 w-4/5 rounded bg-gray-100" />
-                  <div className="h-3 w-3/4 rounded bg-gray-100" />
-                </div>
+              <div className="space-y-2.5">
+                <div className="h-3 w-full rounded bg-gray-100" />
+                <div className="h-3 w-11/12 rounded bg-gray-100" />
+                <div className="h-3 w-4/5 rounded bg-gray-100" />
+                <div className="h-3 w-3/4 rounded bg-gray-100" />
               </div>
-            )
-          )}
+            </div>
+          ))}
         </div>
-
       </div>
     </div>
   );
@@ -124,9 +120,7 @@ function ErrorDoc({
 }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-6">
-
       <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
-
         <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
           <span className="text-xl">!</span>
         </div>
@@ -146,7 +140,6 @@ function ErrorDoc({
         >
           Retry
         </button>
-
       </div>
 
     </div>
@@ -169,48 +162,49 @@ export default function SummaryPage() {
     searchParams.get("q") ??
     "";
 
-  const [state, setState] =
-    useState<FetchState>({
-      status: "loading",
-    });
+  const [state, setState] = useState<FetchState>({
+    status: "loading",
+  });
 
-  const [quizLoading, setQuizLoading] =
-    useState(false);
+  const [quizLoading, setQuizLoading] = useState(false);
 
-  const [quizError, setQuizError] =
-    useState("");
+  const [quizError, setQuizError] = useState("");
 
   /* =======================================================
      LOAD SUMMARY
   ======================================================= */
 
- const loadSummary = useCallback(
-  async (showLoading = true) => {
-    if (!topic) {
-      setState({
-        status: "error",
-        message: "No topic was provided.",
-      });
-      return;
-    }
+  const loadSummary = useCallback(
+    async () => {
+      if (!topic) {
+        setState({
+          status: "error",
+          message: "No topic was provided.",
+        });
 
-    if (showLoading) {
+        return;
+      }
+
       setState({
         status: "loading",
       });
-    }
 
-    try {
-      const response = await fetch("/api/summary", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          topic,
-          userId: user?.uid,
-        }),
-      });
+      try {
+        const response = await fetch(
+          "/api/summary",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type": "application/json",
+            },
+
+            body: JSON.stringify({
+              topic,
+              userId: user?.uid,
+            }),
+          }
+        );
 
       if (!response.ok) {
         const payload = await response
@@ -240,23 +234,14 @@ export default function SummaryPage() {
           ? err.message
           : "Unexpected error occurred.";
 
-      setState({
-        status: "error",
-        message,
-      });
-    }
-  },
-  [topic, user]
-);
-useEffect(() => {
-  const timer = setTimeout(() => {
-    loadSummary(false);
-  }, 0);
-
-  return () => {
-    clearTimeout(timer);
-  };
-}, [loadSummary]);
+        setState({
+          status: "error",
+          message,
+        });
+      }
+    },
+    [topic, user]
+  );
 
 useEffect(() => {
   const timer = setTimeout(() => {
@@ -322,13 +307,12 @@ useEffect(() => {
   ======================================================= */
 
   const handleSave = async () => {
-    if (!user) {
-      alert("Please login first");
+    if (state.status !== "success") {
       return;
     }
 
-    if (state.status !== "success") {
-      alert("Summary is not ready yet.");
+    if (!user) {
+      alert("Please login first");
       return;
     }
 
@@ -338,26 +322,22 @@ useEffect(() => {
       // Get Firebase authentication token
       const token = await user.getIdToken();
 
-      const response = await fetch(
-        "/api/saved",
-        {
-          method: "POST",
+      const response = await fetch("/api/saved", {
+        method: "POST",
 
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
 
-          body: JSON.stringify({
-            userId: user.uid,
-            title: data.title,
-            markdown: data.markdown,
-          }),
-        }
-      );
+        body: JSON.stringify({
+          userId: user.uid,
+          title: data.title,
+          markdown: data.markdown,
+        }),
+      });
 
-      const result =
-        await response.json().catch(() => null);
+      const result = await response.json().catch(() => null);
 
       if (!response.ok) {
         console.error(
@@ -439,14 +419,8 @@ useEffect(() => {
       );
 
       if (!response.ok) {
-        const result =
-          await response
-            .json()
-            .catch(() => null);
-
         throw new Error(
-          result?.error ??
-            "Failed to generate presentation"
+          "Failed to generate presentation"
         );
       }
 
@@ -465,15 +439,10 @@ useEffect(() => {
 
       router.push("/presentation");
     } catch (error) {
-      console.error(
-        "Presentation generation error:",
-        error
-      );
+      console.error(error);
 
       alert(
-        error instanceof Error
-          ? error.message
-          : "Failed to generate presentation."
+        "Failed to generate presentation."
       );
     }
   };
@@ -537,9 +506,7 @@ useEffect(() => {
        * Safely parse the response.
        */
       const result =
-        await response
-          .json()
-          .catch(() => null);
+        await response.json().catch(() => null);
 
       console.log(
         "================================="
@@ -712,8 +679,7 @@ useEffect(() => {
   }
 
   /*
-   * At this point TypeScript knows that
-   * state is success.
+   * At this point TypeScript knows that state is success.
    */
   const { data } = state;
 
@@ -723,7 +689,6 @@ useEffect(() => {
 
   return (
     <div className="min-h-screen bg-white">
-
       <ReadingProgress />
 
       {/* =================================================
@@ -731,9 +696,7 @@ useEffect(() => {
       ================================================== */}
 
       <div className="border-b border-gray-100">
-
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
-
           <button
             type="button"
             onClick={goBack}
@@ -752,7 +715,6 @@ useEffect(() => {
               handleGeneratePpt
             }
           />
-
         </div>
 
       </div>
@@ -768,7 +730,6 @@ useEffect(() => {
         ================================================== */}
 
         <main>
-
           <h1 className="mb-2 text-4xl font-bold tracking-tight text-gray-900">
             {data.title}
           </h1>
@@ -778,7 +739,6 @@ useEffect(() => {
           </p>
 
           <div className="mb-10 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-
             <span
               className={`rounded-full border px-2.5 py-1 font-medium ${
                 DIFFICULTY_STYLES[
@@ -796,7 +756,6 @@ useEffect(() => {
             <span className="rounded-full border border-gray-200 px-2.5 py-1">
               Updated {data.lastUpdated}
             </span>
-
           </div>
 
           <MarkdownRenderer
@@ -809,7 +768,6 @@ useEffect(() => {
 
           {interviewItems.length > 0 && (
             <section>
-
               <h2
                 id="interview-questions"
                 className="mt-14 mb-4 scroll-mt-24 border-b border-gray-100 pb-3 text-2xl font-bold tracking-tight text-gray-900"
@@ -820,10 +778,8 @@ useEffect(() => {
               <InterviewAccordion
                 items={interviewItems}
               />
-
             </section>
           )}
-
         </main>
 
         {/* =================================================
@@ -831,7 +787,6 @@ useEffect(() => {
         ================================================== */}
 
         <aside className="hidden lg:block">
-
           <div className="sticky top-24 space-y-5">
 
             {/* =================================================
@@ -840,13 +795,11 @@ useEffect(() => {
 
             {headings.length > 0 && (
               <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
-
                 <h3 className="mb-4 text-sm font-semibold text-gray-900">
                   On this page
                 </h3>
 
                 <div className="space-y-2">
-
                   {headings.map(
                     (heading) => (
                       <a
@@ -858,9 +811,7 @@ useEffect(() => {
                       </a>
                     )
                   )}
-
                 </div>
-
               </div>
             )}
 
@@ -869,7 +820,6 @@ useEffect(() => {
             ================================================== */}
 
             <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
-
               <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100">
                 <BadgeHelp className="h-5 w-5 text-emerald-600" />
               </div>
@@ -894,31 +844,23 @@ useEffect(() => {
                 disabled={quizLoading}
                 className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-
                 {quizLoading ? (
                   <>
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-
                     Generating...
                   </>
                 ) : (
                   <>
                     <Sparkles className="h-4 w-4" />
-
                     Generate Quiz
                   </>
                 )}
-
               </button>
-
             </div>
 
           </div>
-
         </aside>
-
       </div>
-
     </div>
   );
 }
