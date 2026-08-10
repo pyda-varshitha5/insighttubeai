@@ -33,7 +33,10 @@ import {
 interface SummaryResponse {
   title: string;
   subtitle: string;
-  difficulty: "Beginner" | "Intermediate" | "Advanced";
+  difficulty:
+    | "Beginner"
+    | "Intermediate"
+    | "Advanced";
   lastUpdated: string;
   readingTime: number;
   markdown: string;
@@ -129,7 +132,7 @@ function ErrorDoc({
         </div>
 
         <h2 className="text-xl font-bold text-gray-900">
-          Couldn't generate this guide
+          Could not generate this guide
         </h2>
 
         <p className="mt-3 text-sm leading-6 text-gray-500">
@@ -145,6 +148,7 @@ function ErrorDoc({
         </button>
 
       </div>
+
     </div>
   );
 }
@@ -180,80 +184,89 @@ export default function SummaryPage() {
      LOAD SUMMARY
   ======================================================= */
 
-  const loadSummary = useCallback(
-    async () => {
-      if (!topic) {
-        setState({
-          status: "error",
-          message: "No topic was provided.",
-        });
+ const loadSummary = useCallback(
+  async (showLoading = true) => {
+    if (!topic) {
+      setState({
+        status: "error",
+        message: "No topic was provided.",
+      });
+      return;
+    }
 
-        return;
-      }
-
+    if (showLoading) {
       setState({
         status: "loading",
       });
+    }
 
-      try {
-        const response = await fetch(
-          "/api/summary",
-          {
-            method: "POST",
+    try {
+      const response = await fetch("/api/summary", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          topic,
+          userId: user?.uid,
+        }),
+      });
 
-            headers: {
-              "Content-Type": "application/json",
-            },
+      if (!response.ok) {
+        const payload = await response
+          .json()
+          .catch(() => null);
 
-            body: JSON.stringify({
-              topic,
-              userId: user?.uid,
-            }),
-          }
+        throw new Error(
+          payload?.error ??
+            "Failed to generate documentation."
         );
-
-        if (!response.ok) {
-          const payload =
-            await response
-              .json()
-              .catch(() => null);
-
-          throw new Error(
-            payload?.error ??
-              "Failed to generate documentation."
-          );
-        }
-
-        const data =
-          (await response.json()) as SummaryResponse;
-
-        setState({
-          status: "success",
-          data,
-        });
-
-        window.dispatchEvent(
-          new Event("progress-updated")
-        );
-      } catch (err) {
-        const message =
-          err instanceof Error
-            ? err.message
-            : "Unexpected error occurred.";
-
-        setState({
-          status: "error",
-          message,
-        });
       }
-    },
-    [topic, user]
-  );
 
-  useEffect(() => {
+      const data =
+        (await response.json()) as SummaryResponse;
+
+      setState({
+        status: "success",
+        data,
+      });
+
+      window.dispatchEvent(
+        new Event("progress-updated")
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Unexpected error occurred.";
+
+      setState({
+        status: "error",
+        message,
+      });
+    }
+  },
+  [topic, user]
+);
+useEffect(() => {
+  const timer = setTimeout(() => {
+    loadSummary(false);
+  }, 0);
+
+  return () => {
+    clearTimeout(timer);
+  };
+}, [loadSummary]);
+
+useEffect(() => {
+  const timer = setTimeout(() => {
     loadSummary();
-  }, [loadSummary]);
+  }, 0);
 
+  return () => {
+    clearTimeout(timer);
+  };
+}, [loadSummary]);
   /* =======================================================
      MARKDOWN
   ======================================================= */
@@ -470,6 +483,9 @@ export default function SummaryPage() {
   ======================================================= */
 
   const handleGenerateQuiz = async () => {
+    /*
+     * Make sure the summary has loaded successfully.
+     */
     if (state.status !== "success") {
       return;
     }
@@ -480,11 +496,27 @@ export default function SummaryPage() {
       setQuizLoading(true);
       setQuizError("");
 
-      /*
-       * Send the EXACT generated summary to Gemini.
-       * This makes the quiz based on what the student studied.
-       */
+      console.log(
+        "================================="
+      );
 
+      console.log(
+        "GENERATING QUIZ"
+      );
+
+      console.log(
+        "TOPIC:",
+        topic
+      );
+
+      console.log(
+        "================================="
+      );
+
+      /*
+       * Send the generated summary to the
+       * quiz API.
+       */
       const response = await fetch(
         "/api/quiz/generate",
         {
@@ -501,35 +533,139 @@ export default function SummaryPage() {
         }
       );
 
+      /*
+       * Safely parse the response.
+       */
       const result =
-        await response.json().catch(() => null);
+        await response
+          .json()
+          .catch(() => null);
 
+      console.log(
+        "================================="
+      );
+
+      console.log(
+        "QUIZ API RESPONSE:",
+        result
+      );
+
+      console.log(
+        "QUIZ API STATUS:",
+        response.status
+      );
+
+      console.log(
+        "================================="
+      );
+
+      /*
+       * Handle API errors.
+       */
       if (!response.ok) {
         throw new Error(
           result?.error ??
+            result?.message ??
             "Failed to generate quiz."
         );
       }
 
       /*
-       * Store the generated quiz temporarily.
-       * We don't put the entire summary/quiz into the URL.
+       * The API may return any of these:
+       *
+       * {
+       *   questions: [...]
+       * }
+       *
+       * OR
+       *
+       * {
+       *   quiz: {
+       *     questions: [...]
+       *   }
+       * }
+       *
+       * OR
+       *
+       * {
+       *   data: {
+       *     questions: [...]
+       *   }
+       * }
+       *
+       * Normalize all of them.
        */
+      const quizData =
+        result?.quiz ??
+        result?.data ??
+        result;
 
-      sessionStorage.setItem(
-        "generatedQuiz",
-        JSON.stringify(result)
+      console.log(
+        "NORMALIZED QUIZ DATA:",
+        quizData
       );
 
+      /*
+       * Make sure questions exist.
+       */
+      if (
+        !quizData ||
+        !Array.isArray(
+          quizData.questions
+        ) ||
+        quizData.questions.length === 0
+      ) {
+        console.error(
+          "Invalid quiz response:",
+          result
+        );
+
+        throw new Error(
+          "Quiz was generated, but no questions were returned."
+        );
+      }
+
+      /*
+       * Create the exact object that
+       * the quiz page will receive.
+       */
+      const finalQuiz = {
+        topic:
+          quizData.topic ??
+          topic,
+
+        questions:
+          quizData.questions,
+      };
+
+      console.log(
+        "FINAL QUIZ DATA:",
+        finalQuiz
+      );
+
+      /*
+       * Save generated quiz in sessionStorage.
+       */
+      sessionStorage.setItem(
+        "generatedQuiz",
+        JSON.stringify(finalQuiz)
+      );
+
+      /*
+       * Save topic separately as well.
+       */
       sessionStorage.setItem(
         "quizTopic",
         topic
       );
 
-      /*
-       * Open the quiz page.
-       */
+      console.log(
+        "Quiz saved successfully."
+      );
 
+      /*
+       * Navigate to quiz page.
+       */
       router.push(
         `/quizzes?topic=${encodeURIComponent(
           topic
@@ -576,7 +712,8 @@ export default function SummaryPage() {
   }
 
   /*
-   * At this point TypeScript knows that state is success.
+   * At this point TypeScript knows that
+   * state is success.
    */
   const { data } = state;
 
@@ -617,6 +754,7 @@ export default function SummaryPage() {
           />
 
         </div>
+
       </div>
 
       {/* =================================================

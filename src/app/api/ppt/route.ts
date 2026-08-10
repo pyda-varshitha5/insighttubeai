@@ -1,303 +1,368 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getSlideElements } from "@/lib/presentationLayouts";
+
+/* =====================================================
+   TYPES
+   ===================================================== */
+
+interface PresentationSlide {
+  title: string;
+  subtitle?: string;
+  body: string;
+  highlights: string[];
+  imagePrompt: string;
+  icon?: string;
+  layout?: string;
+  accentColor?: string;
+}
+
+interface PresentationData {
+  slides: PresentationSlide[];
+}
+
+/* =====================================================
+   GEMINI
+   ===================================================== */
+
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY!,
 });
-async function getImage(query: string) {
+
+/* =====================================================
+   GET IMAGE FROM UNSPLASH
+   ===================================================== */
+
+async function getImage(query: string): Promise<string> {
+  const fallback =
+    "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
+
   try {
+    const accessKey = process.env.UNSPLASH_ACCESS_KEY;
+
+    if (!accessKey) {
+      return fallback;
+    }
+
     const res = await fetch(
       `https://api.unsplash.com/search/photos?query=${encodeURIComponent(
         query
       )}&per_page=1&orientation=landscape`,
       {
         headers: {
-          Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}`,
+          Authorization: `Client-ID ${accessKey}`,
         },
       }
     );
 
-    const data = await res.json();
+    if (!res.ok) {
+      console.error(
+        "Unsplash request failed:",
+        res.status,
+        res.statusText
+      );
+
+      return fallback;
+    }
+
+    const data: {
+      results?: Array<{
+        urls?: {
+          regular?: string;
+        };
+      }>;
+    } = await res.json();
 
     return (
       data.results?.[0]?.urls?.regular ||
-      "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee"
+      fallback
     );
-  } catch {
-    return "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
+  } catch (error: unknown) {
+    console.error(
+      "Unsplash image error:",
+      error instanceof Error
+        ? error.message
+        : String(error)
+    );
+
+    return fallback;
   }
 }
-async function createPresentation(aiData: any, topic: string) {
-  return {
-    id: crypto.randomUUID(),
-    title: topic,
-    theme: "modern",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
 
-    slides: await Promise.all(
-      aiData.slides.map(async (slide: any) => {
-        const imageUrl = await getImage(
-          slide.imagePrompt || slide.title || topic
-        );
+/* =====================================================
+   CREATE PRESENTATION
+   ===================================================== */
+
+async function createPresentation(
+  aiData: PresentationData,
+  topic: string
+) {
+  if (
+    !aiData ||
+    !Array.isArray(aiData.slides)
+  ) {
+    throw new Error(
+      "Gemini response does not contain a valid slides array."
+    );
+  }
+
+  if (aiData.slides.length !== 10) {
+    throw new Error(
+      `Expected 10 slides but received ${aiData.slides.length}.`
+    );
+  }
+
+  const slides = await Promise.all(
+    aiData.slides.map(
+      async (
+        slide: PresentationSlide
+      ) => {
+        const imageUrl =
+          await getImage(
+            slide.imagePrompt ||
+              slide.title ||
+              topic
+          );
 
         return {
           id: crypto.randomUUID(),
 
           title: slide.title,
 
+          subtitle:
+            slide.subtitle || "",
+
           background: {
             type: "color",
             value: "#ffffff",
           },
 
-          elements: getSlideElements(slide, imageUrl),
+          elements: getSlideElements(
+            slide,
+            imageUrl
+          ),
         };
-      })
-    ),
+      }
+    )
+  );
+
+  return {
+    id: crypto.randomUUID(),
+
+    title: topic,
+
+    theme: "modern",
+
+    createdAt:
+      new Date().toISOString(),
+
+    updatedAt:
+      new Date().toISOString(),
+
+    slides,
   };
 }
-export async function POST(req: NextRequest) {
+
+/* =====================================================
+   POST
+   ===================================================== */
+
+export async function POST(
+  req: NextRequest
+) {
   try {
-    const { title, markdown } = await req.json();
+    /* =================================================
+       CHECK API KEY
+       ================================================= */
 
- const prompt = `
-You are Gamma AI's senior presentation designer and content writer.
+    const apiKey =
+      process.env.GEMINI_API_KEY;
 
-Create a PREMIUM presentation that looks like it was designed by Gamma AI.
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          error:
+            "GEMINI_API_KEY is missing in .env.local",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
 
-Topic:
+    /* =================================================
+       GET REQUEST DATA
+       ================================================= */
+
+    const body =
+      await req.json();
+
+    const title =
+      typeof body?.title === "string"
+        ? body.title.trim()
+        : "";
+
+    const markdown =
+      typeof body?.markdown === "string"
+        ? body.markdown.trim()
+        : "";
+
+    if (!title) {
+      return NextResponse.json(
+        {
+          error:
+            "Presentation title is required.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    if (!markdown) {
+      return NextResponse.json(
+        {
+          error:
+            "Study material is required.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    /* =================================================
+       PROMPT
+       ================================================= */
+
+    const prompt = `
+You are Gamma AI's senior presentation designer
+and educational content writer.
+
+Create a premium, professional presentation.
+
+TOPIC:
 "${title}"
 
-Use ONLY the study material below as the source.
-
-Study Material:
+STUDY MATERIAL:
 ${markdown}
 
-==========================
-GOAL
-==========================
+IMPORTANT:
 
-Generate a professional, visually balanced, highly informative presentation.
+Use ONLY the study material above as the source.
 
-Each slide must contain meaningful explanations while remaining suitable for presentation design.
+Do not introduce unrelated information.
 
-The presentation must flow naturally from beginning to end.
+Create EXACTLY 10 slides.
 
-Never repeat the same information.
+The presentation must flow naturally from beginning
+to end.
 
-Each slide should teach something new.
+Each slide must teach something new.
 
-==========================
-SLIDES
-==========================
+Do not repeat information.
 
-Generate EXACTLY 10 slides.
+=====================================================
+SLIDE STRUCTURE
+=====================================================
 
-Slide 1
-Layout: hero-cover
+Slide 1:
 
-- title
-- subtitle
-- imagePrompt
+layout = "hero-cover"
 
-No body.
-No highlights.
+Slides 2-10:
 
---------------------------------
+layout = "content"
 
-Slide 2
-Layout: introduction
+=====================================================
+EVERY SLIDE
+=====================================================
 
-- title
-- subtitle
-- body
-- highlights
-- imagePrompt
-
---------------------------------
-
-Slide 3
-Layout: overview
-
-- title
-- subtitle
-- body
-- highlights
-- imagePrompt
-
---------------------------------
-
-Slide 4
-Layout: image-right
-
-- title
-- subtitle
-- body
-- highlights
-- imagePrompt
-
---------------------------------
-
-Slide 5
-Layout: image-left
-
-- title
-- subtitle
-- body
-- highlights
-- imagePrompt
-
---------------------------------
-
-Slide 6
-Layout: two-column
-
-- title
-- subtitle
-- body
-- highlights
-- imagePrompt
-
---------------------------------
-
-Slide 7
-Layout: statistics
-
-- title
-- subtitle
-- body
-- highlights
-- imagePrompt
-
---------------------------------
-
-Slide 8
-Layout: timeline
-
-- title
-- subtitle
-- body
-- highlights
-- imagePrompt
-
---------------------------------
-
-Slide 9
-Layout: applications
-
-- title
-- subtitle
-- body
-- highlights
-- imagePrompt
-
---------------------------------
-
-Slide 10
-Layout: conclusion
-
-- title
-- subtitle
-- body
-- highlights
-- imagePrompt
-
-==========================
-BODY RULES
-==========================
-
-Each slide MUST contain:
+Each slide must contain:
 
 title
-
 subtitle
-
-Rules:
-- Maximum 8 words.
-- Must fit on ONE line.
-- Maximum 50 characters.
-
 body
-
-Write ONE short paragraph.
-
-Maximum 30 words.
-
-Exactly 2 sentences.
-
 highlights
-
-Exactly 3 bullet points.
-
-Each bullet:
-- 3–5 words only.
-- Never a complete sentence.
-
-Example:
-
-Fast search
-
-Easy insertion
-
-Low memory usage
-
 imagePrompt
-
-layout
-
 icon
-
+layout
 accentColor
 
-==========================
+=====================================================
+TITLE
+=====================================================
+
+Maximum 8 words.
+
+Maximum 50 characters.
+
+Keep it short and presentation-ready.
+
+=====================================================
+SUBTITLE
+=====================================================
+
+Maximum 10 words.
+
+Keep it concise.
+
+=====================================================
 BODY
-==========================
+=====================================================
 
-The "body" should:
+Write ONE paragraph.
 
-• Explain the concept clearly.
-• Be educational.
-• Be suitable for college students.
-• Be written in simple English.
-• Be exactly ONE paragraph.
-• Contain between 55 and 75 words.
-• Never exceed 75 words.
-• Never use bullet points.
-• Never repeat the title.
-• Never start with "This slide..."
-• Never include numbering.
+Use simple English.
 
-==========================
+Suitable for college students.
+
+Educational and informative.
+
+Target 40-60 words.
+
+Never use bullet points.
+
+Never start with:
+
+"This slide..."
+
+Never repeat the title.
+
+Never include numbering.
+
+=====================================================
 HIGHLIGHTS
-==========================
+=====================================================
 
-Provide EXACTLY 3 highlights.
+Exactly 3 highlights.
 
-Each highlight must:
+Each highlight should:
 
-• Be less than 8 words.
-• Be unique.
-• Represent the most important takeaway.
-• Never repeat the body.
+- Be concise.
+- Contain fewer than 7 words.
+- Represent an important takeaway.
+- Not repeat the body exactly.
 
 Example:
 
 [
-"Constant time lookup",
-"Memory efficient",
-"Supports recursion"
+  "Constant time lookup",
+  "Memory efficient",
+  "Supports recursion"
 ]
 
-==========================
-IMAGES
-==========================
+=====================================================
+IMAGE PROMPT
+=====================================================
 
-For every slide generate an imagePrompt.
+Every slide must have an imagePrompt.
 
-The prompt should describe ONE high-quality illustration.
+Describe ONE high-quality educational illustration.
 
-Use prompts suitable for Unsplash.
+Do NOT include text inside the image.
+
+Use image prompts suitable for Unsplash.
 
 Examples:
 
@@ -313,37 +378,13 @@ Examples:
 
 "cyber security shield"
 
-Do NOT include text inside imagePrompt.
+Use a different relevant image for every slide.
 
-==========================
-LAYOUTS
-==========================
+=====================================================
+ICON
+=====================================================
 
-Allowed layouts ONLY:
-
-Create exactly 10 slides.
-
-Slide 1:
-layout = hero-cover
-
-Slides 2-10:
-layout = content
-
-Each content slide must contain:
-
-- title
-- body (maximum 70 words)
-- highlights (exactly 3 bullet points)
-- imagePrompt
-
-Do NOT generate subtitles.
-Do NOT generate icons.
-Do NOT generate accent colors.
-Use concise professional language.
-
-==========================
-ICONS
-==========================
+Use exactly ONE icon per slide.
 
 Allowed icons ONLY:
 
@@ -358,13 +399,13 @@ chart
 shield
 settings
 
-==========================
+=====================================================
 ACCENT COLOR
-==========================
+=====================================================
 
-Choose ONE accent color per slide.
+Use exactly ONE accent color per slide.
 
-Examples:
+Allowed examples:
 
 #7C3AED
 #2563EB
@@ -372,116 +413,403 @@ Examples:
 #DC2626
 #EA580C
 
-==========================
-IMPORTANT
-==========================
+=====================================================
+LAYOUT
+=====================================================
 
-The presentation should feel like a professionally designed Gamma AI presentation.
+Slide 1 MUST use:
 
-Content must be concise enough to fit inside the slide layout without overlapping.
+"hero-cover"
 
-Do NOT produce long paragraphs.
+Slides 2-10 MUST use:
 
-Do NOT produce essays.
+"content"
 
-Do NOT repeat information across slides.
+=====================================================
+DESIGN RULES
+=====================================================
 
-==========================
+Create clean professional Gamma-style slides.
+
+Keep plenty of empty space.
+
+Do not create long paragraphs.
+
+Do not create essays.
+
+Do not create more than 3 highlights.
+
+Do not repeat information.
+
+Content must fit comfortably inside a fixed-size slide.
+
+=====================================================
 OUTPUT
-==========================
+=====================================================
 
 Return ONLY valid JSON.
 
-No markdown.
+Do NOT use markdown.
 
-No explanation.
-IMPORTANT PRESENTATION RULES
+Do NOT use code fences.
 
-Create clean, professional slides like Gamma AI.
+Do NOT provide explanations.
 
-Each slide must contain:
+Use exactly this structure:
 
-- title (maximum 8 words)
-- subtitle (maximum 10 words)
-- body (40–60 words only)
-- highlights (exactly 3 bullet points)
-
-Rules:
-
-- Never write long paragraphs.
-- Never exceed 60 words in body.
-- Every bullet must contain less than 7 words.
-- Never repeat the same information.
-- Use only the most important points.
-- Keep plenty of empty space on every slide.
-- Generate only presentation-ready content.
-- Use a different relevant image for every slide.
-- Body and highlights must fit comfortably on one slide.
 {
   "slides": [
     {
       "title": "Short slide title",
       "subtitle": "Short supporting subtitle",
-      "body": "A concise 40 to 60 word explanation containing only the most important information about this slide.",
+      "body": "A concise educational paragraph.",
       "highlights": [
         "Important point one",
         "Important point two",
         "Important point three"
       ],
-      "imagePrompt": "specific relevant educational image for this exact slide topic",
+      "imagePrompt": "Specific relevant educational image",
       "icon": "book",
-      "layout": "introduction",
+      "layout": "hero-cover",
       "accentColor": "#7C3AED"
     }
   ]
 }
-  IMPORTANT
 
-The presentation is displayed on a fixed-size slide.
+There MUST be exactly 10 slide objects.
 
-Keep every slide clean and readable.
+=====================================================
+FINAL VALIDATION
+=====================================================
 
-Never generate:
-- long titles
-- long subtitles
-- long paragraphs
-- more than 3 bullets
+Before returning the JSON:
 
-Summarize instead of writing extra text.
+1. Make sure there are exactly 10 slides.
+2. Make sure every slide has a title.
+3. Make sure every slide has a body.
+4. Make sure every slide has exactly 3 highlights.
+5. Make sure every slide has an imagePrompt.
+6. Make sure Slide 1 uses "hero-cover".
+7. Make sure Slides 2-10 use "content".
+8. Make sure every slide has an allowed icon.
+9. Make sure every slide has an accentColor.
+10. Return valid JSON only.
 `;
 
-    const result = await ai.models.generateContent({
-      model: "models/gemini-flash-latest",
-      contents: prompt,
-    });
+    /* =================================================
+       GENERATE WITH GEMINI
+       ================================================= */
 
-    const text = result.text;
+    console.log(
+      "Generating PPT for:",
+      title
+    );
+
+    const result =
+      await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+
+        contents: prompt,
+
+        config: {
+          responseMimeType:
+            "application/json",
+        },
+      });
+
+    /* =================================================
+       GET RESPONSE
+       ================================================= */
+
+    const text =
+      result.text;
 
     if (!text) {
-      throw new Error("Gemini returned an empty response.");
+      throw new Error(
+        "Gemini returned an empty response."
+      );
     }
 
-    const cleaned = text
-      .replace(/```json/g, "")
-      .replace(/```/g, "")
-      .trim();
+    console.log(
+      "Gemini PPT response received."
+    );
 
-    const aiSlides = JSON.parse(cleaned);
-    console.log(JSON.stringify(aiSlides, null, 2));
-   
+    /* =================================================
+       CLEAN JSON
+       ================================================= */
 
-const presentation = await createPresentation(aiSlides, title);
+    const cleaned =
+      text
+        .replace(
+          /^```json\s*/i,
+          ""
+        )
+        .replace(
+          /^```\s*/i,
+          ""
+        )
+        .replace(
+          /\s*```$/i,
+          ""
+        )
+        .trim();
 
-return NextResponse.json(presentation);
- } catch (error: any) {
-  console.error("PPT ERROR:", error);
+    /* =================================================
+       PARSE JSON
+       ================================================= */
 
-  return NextResponse.json(
-    {
-      error: error?.message || String(error),
-      stack: error?.stack,
-    },
-    { status: 500 }
-  );
-}
+    let aiSlides: PresentationData;
+
+    try {
+      const parsed: unknown =
+        JSON.parse(cleaned);
+
+      if (
+        !parsed ||
+        typeof parsed !== "object"
+      ) {
+        throw new Error(
+          "Gemini returned an invalid JSON object."
+        );
+      }
+
+      const candidate =
+        parsed as {
+          slides?: unknown;
+        };
+
+      if (
+        !Array.isArray(
+          candidate.slides
+        )
+      ) {
+        throw new Error(
+          "Gemini response does not contain a slides array."
+        );
+      }
+
+      aiSlides = {
+        slides:
+          candidate.slides as PresentationSlide[],
+      };
+    } catch (error: unknown) {
+      console.error(
+        "Invalid Gemini PPT JSON:",
+        cleaned
+      );
+
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "Gemini returned invalid presentation JSON."
+      );
+    }
+
+    /* =================================================
+       VALIDATE SLIDES ARRAY
+       ================================================= */
+
+    if (
+      !aiSlides ||
+      !Array.isArray(
+        aiSlides.slides
+      )
+    ) {
+      throw new Error(
+        "Gemini response does not contain a valid slides array."
+      );
+    }
+
+    if (
+      aiSlides.slides.length !== 10
+    ) {
+      throw new Error(
+        `Expected 10 slides but received ${aiSlides.slides.length}.`
+      );
+    }
+
+    /* =================================================
+       VALIDATE EACH SLIDE
+       ================================================= */
+
+    aiSlides.slides.forEach(
+      (
+        slide: PresentationSlide,
+        index: number
+      ) => {
+        const slideNumber =
+          index + 1;
+
+        /* ---------------------------------------------
+           TITLE
+           --------------------------------------------- */
+
+        if (
+          !slide.title ||
+          typeof slide.title !==
+            "string"
+        ) {
+          throw new Error(
+            `Slide ${slideNumber} has no title.`
+          );
+        }
+
+        /* ---------------------------------------------
+           BODY
+           --------------------------------------------- */
+
+        if (
+          !slide.body ||
+          typeof slide.body !==
+            "string"
+        ) {
+          throw new Error(
+            `Slide ${slideNumber} has no body.`
+          );
+        }
+
+        /* ---------------------------------------------
+           HIGHLIGHTS
+           --------------------------------------------- */
+
+        if (
+          !Array.isArray(
+            slide.highlights
+          ) ||
+          slide.highlights.length !== 3
+        ) {
+          throw new Error(
+            `Slide ${slideNumber} must have exactly 3 highlights.`
+          );
+        }
+
+        /* ---------------------------------------------
+           IMAGE PROMPT
+           --------------------------------------------- */
+
+        if (
+          !slide.imagePrompt ||
+          typeof slide.imagePrompt !==
+            "string"
+        ) {
+          throw new Error(
+            `Slide ${slideNumber} has no imagePrompt.`
+          );
+        }
+
+        /* ---------------------------------------------
+           LAYOUT
+           --------------------------------------------- */
+
+        if (index === 0) {
+          slide.layout =
+            "hero-cover";
+        } else {
+          slide.layout =
+            "content";
+        }
+
+        /* ---------------------------------------------
+           SUBTITLE
+           --------------------------------------------- */
+
+        if (
+          !slide.subtitle ||
+          typeof slide.subtitle !==
+            "string"
+        ) {
+          slide.subtitle = "";
+        }
+
+        /* ---------------------------------------------
+           ICON
+           --------------------------------------------- */
+
+        const allowedIcons = [
+          "book",
+          "code",
+          "cpu",
+          "database",
+          "rocket",
+          "globe",
+          "lightbulb",
+          "chart",
+          "shield",
+          "settings",
+        ];
+
+        if (
+          !slide.icon ||
+          !allowedIcons.includes(
+            slide.icon
+          )
+        ) {
+          slide.icon = "book";
+        }
+
+        /* ---------------------------------------------
+           ACCENT COLOR
+           --------------------------------------------- */
+
+        const allowedColors = [
+          "#7C3AED",
+          "#2563EB",
+          "#059669",
+          "#DC2626",
+          "#EA580C",
+        ];
+
+        if (
+          !slide.accentColor ||
+          !allowedColors.includes(
+            slide.accentColor
+          )
+        ) {
+          slide.accentColor =
+            "#7C3AED";
+        }
+      }
+    );
+
+    /* =================================================
+       CREATE PRESENTATION
+       ================================================= */
+
+    const presentation =
+      await createPresentation(
+        aiSlides,
+        title
+      );
+
+    console.log(
+      "Presentation created successfully."
+    );
+
+    /* =================================================
+       RETURN
+       ================================================= */
+
+    return NextResponse.json(
+      presentation
+    );
+  } catch (error: unknown) {
+    console.error(
+      "PPT ERROR:",
+      error
+    );
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
+
+    return NextResponse.json(
+      {
+        error: message,
+      },
+      {
+        status: 500,
+      }
+    );
+  }
 }

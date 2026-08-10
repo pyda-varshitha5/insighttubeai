@@ -10,7 +10,6 @@ import {
   Loader2,
   Check,
 } from "lucide-react";
-import { Presentation } from "@/types/presentation";
 
 interface SummaryActionsProps {
   title: string;
@@ -24,9 +23,10 @@ interface SummaryActionsProps {
 function sanitizeFileName(name: string): string {
   const cleaned = name
     .trim()
-    .replace(/[\\/:*?"<>|]/g, "")
+    .replace(/[\\/:\*?"<>|]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+
   return cleaned.length > 0 ? cleaned : "Summary";
 }
 
@@ -44,6 +44,9 @@ export default function SummaryActions({
   const [isSharing, setIsSharing] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
+  // ============================================================
+  // EXPORT PDF
+  // ============================================================
   const handleExportPdf = useCallback(async () => {
     if (isExporting) return;
 
@@ -63,30 +66,38 @@ export default function SummaryActions({
 
       if (!response.ok) {
         let errorMessage = "Failed to export PDF.";
+
         try {
           const errorData = await response.json();
+
           if (errorData?.error) {
             errorMessage = errorData.error;
           }
         } catch {
-          // response wasn't JSON, ignore
+          // Response was not JSON
         }
+
         throw new Error(errorMessage);
       }
 
       const blob = await response.blob();
+
       const fileName = `${sanitizeFileName(title)}.pdf`;
 
       const url = window.URL.createObjectURL(blob);
+
       const link = document.createElement("a");
       link.href = url;
       link.download = fileName;
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Export PDF failed:", error);
+
       alert(
         error instanceof Error
           ? error.message
@@ -97,19 +108,34 @@ export default function SummaryActions({
     }
   }, [isExporting, title, markdown]);
 
+  // ============================================================
+  // GENERATE PPT
+  // ============================================================
   const handleGeneratePpt = useCallback(async () => {
-  if (isGeneratingPpt) return;
+    if (isGeneratingPpt) return;
 
-  setIsGeneratingPpt(true);
+    setIsGeneratingPpt(true);
 
-  try {
-    if (onGeneratePpt) {
-      await onGeneratePpt();
+    try {
+      if (onGeneratePpt) {
+        await onGeneratePpt();
+      }
+    } catch (error) {
+      console.error("Generate PPT failed:", error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while generating the PPT."
+      );
+    } finally {
+      setIsGeneratingPpt(false);
     }
-  } finally {
-    setIsGeneratingPpt(false);
-  }
-}, [isGeneratingPpt, onGeneratePpt]);
+  }, [isGeneratingPpt, onGeneratePpt]);
+
+  // ============================================================
+  // COPY SUMMARY
+  // ============================================================
   const handleCopySummary = useCallback(async () => {
     try {
       if (onCopySummary) {
@@ -117,16 +143,25 @@ export default function SummaryActions({
       } else {
         await navigator.clipboard.writeText(markdown);
       }
+
       setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
+
+      setTimeout(() => {
+        setIsCopied(false);
+      }, 2000);
     } catch (error) {
       console.error("Copy summary failed:", error);
     }
   }, [markdown, onCopySummary]);
 
+  // ============================================================
+  // SHARE
+  // ============================================================
   const handleShare = useCallback(async () => {
     if (isSharing) return;
+
     setIsSharing(true);
+
     try {
       if (onShare) {
         await onShare();
@@ -138,9 +173,11 @@ export default function SummaryActions({
         });
       } else {
         await navigator.clipboard.writeText(window.location.href);
+
+        alert("Link copied to clipboard.");
       }
     } catch (error) {
-      // AbortError happens when the user cancels the native share sheet - ignore it
+      // User cancelled native share sheet
       if ((error as Error)?.name !== "AbortError") {
         console.error("Share failed:", error);
       }
@@ -149,19 +186,26 @@ export default function SummaryActions({
     }
   }, [isSharing, onShare, title]);
 
+  // ============================================================
+  // SAVE
+  // ============================================================
   const handleSave = useCallback(async () => {
     try {
       if (onSave) {
         await onSave();
       }
+
       setIsSaved(true);
     } catch (error) {
       console.error("Save failed:", error);
     }
   }, [onSave]);
 
+  // ============================================================
+  // UI
+  // ============================================================
   return (
-    <div className="flex w-full flex-wrap items-center justify-end gap-3 rounded-xl border border-gray-200 bg-white px-5 py-4">
+    <div className="flex flex-wrap items-center gap-3">
       {/* Export PDF */}
       <button
         type="button"
@@ -175,6 +219,7 @@ export default function SummaryActions({
         ) : (
           <FileText className="h-4 w-4" />
         )}
+
         {isExporting ? "Exporting..." : "Export PDF"}
       </button>
 
@@ -191,6 +236,7 @@ export default function SummaryActions({
         ) : (
           <MonitorPlay className="h-4 w-4" />
         )}
+
         {isGeneratingPpt ? "Generating..." : "Generate PPT"}
       </button>
 
@@ -205,6 +251,7 @@ export default function SummaryActions({
         ) : (
           <Copy className="h-4 w-4" />
         )}
+
         {isCopied ? "Copied!" : "Copy Summary"}
       </button>
 
@@ -216,8 +263,13 @@ export default function SummaryActions({
         aria-busy={isSharing}
         className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-70"
       >
-        <Share2 className="h-4 w-4" />
-        Share
+        {isSharing ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Share2 className="h-4 w-4" />
+        )}
+
+        {isSharing ? "Sharing..." : "Share"}
       </button>
 
       {/* Save */}
@@ -227,8 +279,11 @@ export default function SummaryActions({
         className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50"
       >
         <Bookmark
-          className={`h-4 w-4 ${isSaved ? "fill-gray-800" : ""}`}
+          className={`h-4 w-4 ${
+            isSaved ? "fill-gray-800" : ""
+          }`}
         />
+
         {isSaved ? "Saved" : "Save"}
       </button>
     </div>
