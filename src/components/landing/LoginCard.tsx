@@ -111,7 +111,14 @@ useEffect(() => {
       // NOT ADMIN
       // ------------------------------------------------
 
-      if (!response.ok || !data.authorized) {
+      if (
+  !response.ok ||
+  !(
+    data?.authorized === true ||
+    data?.success === true ||
+    data?.isAdmin === true
+  )
+) {
         setError(
           "You are not authorized to access the admin panel."
         );
@@ -130,12 +137,15 @@ useEffect(() => {
       // Remove any previous admin login flags
       // Admin login should go through Google authentication
 // Remove any previous admin login error
+// Remove any previous admin login error
 localStorage.removeItem("adminLoginError");
 
-// Start Google login
-localStorage.setItem("adminLoginIntent", "true");
+// Admin is verified — open admin dashboard
+console.log("🚀 REDIRECTING TO ADMIN DASHBOARD");
 
-await signInWithGoogle();
+router.replace("/admin/dashboard");
+
+
 
 return;
     }
