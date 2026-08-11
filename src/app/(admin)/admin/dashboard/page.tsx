@@ -661,10 +661,7 @@ export default function AdminDashboardPage() {
                             <div className="flex items-center gap-3">
 
                               {user.photoURL ? (
-                                <img
-                                  src={
-                                    user.photoURL
-                                  }
+ <img  src={ user.photoURL  }
                                   alt={
                                     user.name
                                   }

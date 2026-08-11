@@ -1,37 +1,133 @@
 import mongoose from "mongoose";
 
-const MONGODB_URI = process.env.MONGODB_URI!;
+/*
+|--------------------------------------------------------------------------
+| MongoDB URI
+|--------------------------------------------------------------------------
+|
+| Supports either:
+|
+| MONGODB_URI
+| MONGO_URI
+|
+| The final fallback of "" makes the variable a definite
+| string from TypeScript's point of view.
+|--------------------------------------------------------------------------
+*/
 
-if (!MONGODB_URI) {
-  throw new Error("Please define MONGODB_URI in .env.local");
+const mongoUri: string =
+  process.env.MONGODB_URI ??
+  process.env.MONGO_URI ??
+  "";
+
+/*
+|--------------------------------------------------------------------------
+| Validate MongoDB URI
+|--------------------------------------------------------------------------
+*/
+
+if (mongoUri.trim().length === 0) {
+  throw new Error(
+    "MongoDB connection string is missing. Please add MONGODB_URI or MONGO_URI to .env.local."
+  );
 }
 
-let cached = (global as any).mongoose;
+/*
+|--------------------------------------------------------------------------
+| Mongoose cache
+|--------------------------------------------------------------------------
+|
+| Next.js development mode can reload files multiple times.
+| We store the connection globally so that we don't create
+| multiple MongoDB connections.
+|--------------------------------------------------------------------------
+*/
 
-if (!cached) {
-  cached = (global as any).mongoose = {
+interface MongooseCache {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var mongooseCache: MongooseCache | undefined;
+}
+
+/*
+|--------------------------------------------------------------------------
+| Get existing cache or create a new cache
+|--------------------------------------------------------------------------
+*/
+
+const cached: MongooseCache =
+  global.mongooseCache ?? {
     conn: null,
     promise: null,
   };
-}
 
-export default async function connectDB() {
-  if (cached.conn) return cached.conn;
+/*
+|--------------------------------------------------------------------------
+| Store cache globally
+|--------------------------------------------------------------------------
+*/
 
-  if (!cached.promise) {
-    cached.promise = mongoose
-      .connect(MONGODB_URI)
-      .then((mongoose) => {
-        console.log("✅ MongoDB Connected");
-        return mongoose;
-      })
-      .catch((err) => {
-        console.error("❌ MongoDB Connection Error:");
-        console.error(err);
-        throw err;
-      });
+global.mongooseCache = cached;
+
+/*
+|--------------------------------------------------------------------------
+| Connect to MongoDB
+|--------------------------------------------------------------------------
+*/
+
+export async function connectDB(): Promise<typeof mongoose> {
+  /*
+   * If MongoDB is already connected,
+   * reuse the existing connection.
+   */
+  if (cached.conn) {
+    return cached.conn;
   }
 
-  cached.conn = await cached.promise;
-  return cached.conn;
+  /*
+   * If a connection is currently being established,
+   * reuse that promise.
+   */
+  if (!cached.promise) {
+    cached.promise = mongoose.connect(mongoUri);
+  }
+
+  try {
+    /*
+     * Wait for MongoDB connection.
+     */
+    cached.conn = await cached.promise;
+
+    return cached.conn;
+  } catch (error) {
+    /*
+     * Reset the promise if connection fails.
+     */
+    cached.promise = null;
+
+    console.error(
+      "MongoDB connection error:",
+      error
+    );
+
+    throw error;
+  }
 }
+
+/*
+|--------------------------------------------------------------------------
+| Default export
+|--------------------------------------------------------------------------
+|
+| Supports:
+|
+| import connectDB from "@/app/lib/mongodb";
+|
+|--------------------------------------------------------------------------
+*/
+
+export default connectDB;

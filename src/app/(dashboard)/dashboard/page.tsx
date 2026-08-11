@@ -1,6 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, {
+  useEffect,
+  useState,
+} from "react";
 
 import StatsGrid from "@/components/dashboard/StatsGrid";
 import RecentSummaries from "@/components/dashboard/RecentSummaries";
@@ -10,74 +13,140 @@ import LearningBanner from "@/components/dashboard/LearningBanner";
 
 import { useAuth } from "@/context/AuthProvider";
 
+interface ProgressData {
+  totalSearches: number;
+  totalSummaries: number;
+  savedSummaries: number;
+  quizzesCompleted: number;
+}
+
+const DEFAULT_PROGRESS: ProgressData = {
+  totalSearches: 0,
+  totalSummaries: 0,
+  savedSummaries: 0,
+  quizzesCompleted: 0,
+};
+
 export default function DashboardPage() {
   const { user } = useAuth();
 
-  const [progress, setProgress] = useState({
-    totalSearches: 0,
-    totalSummaries: 0,
-    savedSummaries: 0,
-    timeSavedMinutes: 0,
-  });
+  const [progress, setProgress] =
+    useState<ProgressData>(
+      DEFAULT_PROGRESS
+    );
 
-  // Load dashboard stats
   useEffect(() => {
-    if (!user) return;
+    const userId = user?.uid;
 
-    const fetchProgress = async () => {
+    if (!userId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadProgress = async () => {
       try {
-        const res = await fetch(`/api/progress?userId=${user.uid}`);
+        const response = await fetch(
+          `/api/progress?userId=${encodeURIComponent(
+            userId
+          )}`,
+          {
+            method: "GET",
+            cache: "no-store",
+          }
+        );
 
-        if (!res.ok) return;
+        if (!response.ok) {
+          console.error(
+            "Failed to fetch progress:",
+            response.status
+          );
 
-        const data = await res.json();
+          return;
+        }
 
-        setProgress(data);
-      } catch (err) {
-        console.error(err);
+        const data = await response.json();
+
+        if (cancelled) {
+          return;
+        }
+
+        setProgress({
+          totalSearches: Number(
+            data.totalSearches ?? 0
+          ),
+
+          totalSummaries: Number(
+            data.totalSummaries ?? 0
+          ),
+
+          savedSummaries: Number(
+            data.savedSummaries ?? 0
+          ),
+
+          quizzesCompleted: Number(
+            data.quizzesCompleted ?? 0
+          ),
+        });
+      } catch (error) {
+        if (!cancelled) {
+          console.error(
+            "Error loading progress:",
+            error
+          );
+        }
       }
     };
 
-    fetchProgress();
-  }, [user]);
+    /*
+     * Initial dashboard load.
+     */
+    void loadProgress();
 
-  // Refresh dashboard whenever progress changes
-  useEffect(() => {
-    const refresh = async () => {
-      if (!user) return;
-
-      try {
-        const res = await fetch(`/api/progress?userId=${user.uid}`);
-
-        if (!res.ok) return;
-
-        const data = await res.json();
-
-        setProgress(data);
-      } catch (err) {
-        console.error(err);
-      }
+    /*
+     * Called after quiz completion.
+     */
+    const handleProgressUpdate = () => {
+      void loadProgress();
     };
 
-    window.addEventListener("progress-updated", refresh);
+    window.addEventListener(
+      "progress-updated",
+      handleProgressUpdate
+    );
 
     return () => {
-      window.removeEventListener("progress-updated", refresh);
+      cancelled = true;
+
+      window.removeEventListener(
+        "progress-updated",
+        handleProgressUpdate
+      );
     };
-  }, [user]);
+  }, [user?.uid]);
 
   return (
     <div className="space-y-6">
+
       {/* Statistics */}
       <StatsGrid
-        totalSearches={progress.totalSearches}
-        totalSummaries={progress.totalSummaries}
-        savedSummaries={progress.savedSummaries}
-        timeSavedMinutes={progress.timeSavedMinutes}
+        totalSearches={
+          progress.totalSearches
+        }
+        totalSummaries={
+          progress.totalSummaries
+        }
+        savedSummaries={
+          progress.savedSummaries
+        }
+        quizzesCompleted={
+          progress.quizzesCompleted
+        }
       />
 
       {/* Recent Summaries + Right Column */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
         {/* Recent Summaries */}
         <div className="lg:col-span-2">
           <RecentSummaries />
@@ -92,6 +161,7 @@ export default function DashboardPage() {
 
       {/* Bottom Banner */}
       <LearningBanner />
+
     </div>
   );
 }

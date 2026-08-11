@@ -1,50 +1,45 @@
-import mongoose, { Schema, models, model } from "mongoose";
+import mongoose, {
+  Schema,
+  models,
+  model,
+} from "mongoose";
 
-const ProgressSchema = new Schema({
-  userId: {
-    type: String,
-    required: true,
-    unique: true,
+const ProgressSchema = new Schema(
+  {
+    userId: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+    },
+
+    totalSearches: {
+      type: Number,
+      default: 0,
+    },
+
+    totalSummaries: {
+      type: Number,
+      default: 0,
+    },
+
+    savedSummaries: {
+      type: Number,
+      default: 0,
+    },
+
+    quizzesCompleted: {
+      type: Number,
+      default: 0,
+    },
   },
+  {
+    timestamps: true,
+  }
+);
 
-  totalSearches: {
-    type: Number,
-    default: 0,
-  },
+const Progress =
+  models.Progress ||
+  model("Progress", ProgressSchema);
 
-  searchedTopics: {
-    type: [String],
-    default: [],
-  },
-
-  generatedSummaries: {
-  type: [String],
-  default: [],
-},
-
-  totalSummaries: {
-    type: Number,
-    default: 0,
-  },
-
-  savedSummaries: {
-    type: Number,
-    default: 0,
-  },
-
-  timeSavedMinutes: {
-    type: Number,
-    default: 0,
-  },
-
-  quizzesCompleted: {
-    type: Number,
-    default: 0,
-  },
-
-  streak: {
-    type: Number,
-    default: 0,
-  },
-});
-export default models.Progress || model("Progress", ProgressSchema);
+export default Progress;
