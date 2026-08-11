@@ -1,11 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+
+import { useAuth } from "@/context/AuthProvider";
 import { useRouter, useSearchParams } from "next/navigation";import Link from "next/link";
 import {
   ArrowLeft,
 } from "lucide-react";
 export default function QuizPage() {
+  const {
+  user,
+  loading: authLoading,
+} = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -223,23 +233,104 @@ export default function QuizPage() {
   // SUBMIT
   // ---------------------------------------
 
-  function submitQuiz() {
-    let finalScore = 0;
+ async function submitQuiz() {
+  if (submitted) {
+    return;
+  }
 
-    questions.forEach(
-      (question, index) => {
-        if (
-          answers[index] ===
-          question.answer
-        ) {
-          finalScore++;
-        }
+  // ---------------------------------------
+  // CALCULATE SCORE
+  // ---------------------------------------
+
+  let finalScore = 0;
+
+  questions.forEach(
+    (question, index) => {
+      if (
+        answers[index] ===
+        question.answer
+      ) {
+        finalScore++;
+      }
+    }
+  );
+
+  // ---------------------------------------
+  // SHOW RESULT IMMEDIATELY
+  // ---------------------------------------
+
+  setScore(finalScore);
+  setSubmitted(true);
+
+  // ---------------------------------------
+  // CHECK LOGIN
+  // ---------------------------------------
+
+  if (authLoading) {
+    console.warn(
+      "Auth is still loading. Quiz result was not saved."
+    );
+    return;
+  }
+
+  if (!user?.uid) {
+    console.error(
+      "Cannot save quiz: user is not logged in."
+    );
+    return;
+  }
+
+  // ---------------------------------------
+  // SAVE QUIZ COMPLETION
+  // ---------------------------------------
+
+  try {
+    const response = await fetch(
+      "/api/quiz/complete",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          userId: user.uid,
+          topic,
+          score: finalScore,
+          totalQuestions:
+            questions.length,
+        }),
       }
     );
 
-    setScore(finalScore);
-    setSubmitted(true);
+    const data =
+      await response.json();
+
+    console.log(
+      "Quiz completion response:",
+      data
+    );
+
+    if (!response.ok || !data.success) {
+      console.error(
+        "Failed to save quiz completion:",
+        data.message
+      );
+
+      return;
+    }
+
+    console.log(
+      "Quiz completed count:",
+      data.quizzesCompleted
+    );
+  } catch (error) {
+    console.error(
+      "Quiz completion save error:",
+      error
+    );
   }
+}
 
   // ---------------------------------------
   // PROGRESS
@@ -618,12 +709,19 @@ router.push(`/search?q=${encodeURIComponent(topic)}`);    }}
               {/* CIRCLE */}
 
               <div className="my-7 flex justify-center">
-                <div className="flex h-32 w-32 items-center justify-center rounded-full border-[10px] border-purple-100">
-                  <span className="text-3xl font-bold text-purple-600">
-                    {progress}%
-                  </span>
-                </div>
-              </div>
+  <div
+    className="relative flex h-32 w-32 items-center justify-center rounded-full"
+    style={{
+      background: `conic-gradient(#9333ea ${progress}%, #f3e8ff ${progress}% 100%)`,
+    }}
+  >
+    <div className="flex h-[108px] w-[108px] items-center justify-center rounded-full bg-white">
+      <span className="text-3xl font-bold text-purple-600">
+        {progress}%
+      </span>
+    </div>
+  </div>
+</div>
 
               <p className="text-center text-sm text-gray-500">
                 {answeredCount} of{" "}
@@ -647,21 +745,21 @@ router.push(`/search?q=${encodeURIComponent(topic)}`);    }}
 
                     return (
                       <button
-                        key={index}
-                        type="button"
-                        onClick={() =>
-                          goToQuestion(index)
-                        }
-                        className={`h-10 rounded-lg text-sm font-semibold transition ${
-                          active
-                            ? "bg-purple-600 text-white"
-                            : answered
-                            ? "bg-purple-100 text-purple-600"
-                            : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                        }`}
-                      >
-                        {index + 1}
-                      </button>
+  key={index}
+  type="button"
+  onClick={() => goToQuestion(index)}
+  className={`h-10 w-10 mx-auto rounded-full text-sm font-semibold transition border-2 ${
+    active && answered
+      ? "bg-purple-600 text-white border-purple-600 ring-4 ring-purple-100"
+      : active
+      ? "bg-purple-600 text-white border-purple-600"
+      : answered
+      ? "bg-purple-100 text-purple-600 border-purple-300"
+      : "bg-gray-100 text-gray-500 border-transparent hover:bg-gray-200"
+  }`}
+>
+  {index + 1}
+</button>
                     );
                   }
                 )}

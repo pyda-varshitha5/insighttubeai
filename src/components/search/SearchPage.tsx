@@ -1,13 +1,11 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useCallback, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import SearchHero from "./SearchHero";
 import RecentSearches from "./RecentSearches";
 import SuggestedSearches from "./SuggestedSearches";
-
-import { useAuth } from "@/context/AuthProvider";
 
 export interface YouTubeVideo {
   id: string;
@@ -26,8 +24,11 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
 
   const router = useRouter();
-  const { user } = useAuth();
+  const searchParams = useSearchParams();
 
+  /*
+   * Search and open the results page
+   */
   const handleSearch = useCallback(
     (searchTerm?: string) => {
       const q =
@@ -41,26 +42,62 @@ export default function SearchPage() {
         return;
       }
 
-      // Wait until Firebase user is available
-      if (!user?.uid) {
-        console.log("User not loaded yet. Search cancelled.");
-        return;
-      }
-
       setLoading(true);
 
-      // Navigate to the separate results page
+      /*
+       * IMPORTANT:
+       * Do NOT wait for Firebase user here.
+       *
+       * The results page/API can work without
+       * userId, and waiting for Firebase was
+       * preventing navigation.
+       */
       router.push(
         `/search/results?q=${encodeURIComponent(
           normalizedQuery
         )}`
       );
     },
-    [query, user?.uid, router]
+    [query, router]
   );
+
+  /*
+   * If the user opens:
+   *
+   * /search?q=React Hooks
+   *
+   * automatically send them to:
+   *
+   * /search/results?q=React Hooks
+   */
+  useEffect(() => {
+    const q =
+      searchParams.get("q") ||
+      searchParams.get("topic");
+
+    if (!q) {
+      return;
+    }
+
+    const normalizedQuery = q.trim();
+
+    if (!normalizedQuery) {
+      return;
+    }
+
+    setQuery(normalizedQuery);
+    setLoading(true);
+
+    router.replace(
+      `/search/results?q=${encodeURIComponent(
+        normalizedQuery
+      )}`
+    );
+  }, [searchParams, router]);
 
   return (
     <div className="w-full">
+
       {/* Search Hero */}
       <SearchHero
         query={query}
@@ -71,6 +108,7 @@ export default function SearchPage() {
 
       {/* Recent and Suggested Searches */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+
         <RecentSearches
           onSelect={(text) => {
             setQuery(text);
@@ -84,6 +122,7 @@ export default function SearchPage() {
             handleSearch(text);
           }}
         />
+
       </div>
     </div>
   );

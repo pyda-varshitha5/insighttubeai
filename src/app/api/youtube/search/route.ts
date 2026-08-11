@@ -74,10 +74,12 @@ export async function GET(req: NextRequest) {
       // ----------------------------------------
 
       await User.findOneAndUpdate(
-       {
-  uid: userId,
-  "recentSearches.query": { $ne: displayQuery },
-},
+        {
+          uid: userId,
+          "recentSearches.query": {
+            $ne: displayQuery,
+          },
+        },
         {
           $inc: {
             "analytics.totalSearches": 1,
@@ -93,26 +95,27 @@ export async function GET(req: NextRequest) {
       // ----------------------------------------
       // Save search history
       // ----------------------------------------
-await User.findOneAndUpdate(
-  {
-    uid: userId,
-    recentSearches: {
-      $not: {
-        $elemMatch: {
-          query: displayQuery,
+
+      await User.findOneAndUpdate(
+        {
+          uid: userId,
+          recentSearches: {
+            $not: {
+              $elemMatch: {
+                query: displayQuery,
+              },
+            },
+          },
         },
-      },
-    },
-  },
-  {
-    $push: {
-      recentSearches: {
-        query: displayQuery,
-        createdAt: new Date(),
-      },
-    },
-  }
-);
+        {
+          $push: {
+            recentSearches: {
+              query: displayQuery,
+              createdAt: new Date(),
+            },
+          },
+        }
+      );
 
       console.log(
         "Search history saved:",
@@ -123,10 +126,9 @@ await User.findOneAndUpdate(
       // Update progress
       // ----------------------------------------
 
-      let progress =
-        await Progress.findOne({
-          userId,
-        });
+      let progress = await Progress.findOne({
+        userId,
+      });
 
       if (!progress) {
         progress = new Progress({
@@ -141,20 +143,36 @@ await User.findOneAndUpdate(
         });
       }
 
+      // ----------------------------------------
+      // SAFELY GET SEARCHED TOPICS
+      // ----------------------------------------
+
+      if (!Array.isArray(progress.searchedTopics)) {
+        progress.searchedTopics = [];
+      }
+
       console.log(
         "Before Update:",
         progress.searchedTopics
       );
 
+      // ----------------------------------------
+      // ADD SEARCH TOPIC
+      // ----------------------------------------
+
       if (
         !progress.searchedTopics.includes(
           normalizedQuery
-        )
+      )
       ) {
         progress.searchedTopics.push(
           normalizedQuery
         );
       }
+
+      // ----------------------------------------
+      // UPDATE TOTAL SEARCHES
+      // ----------------------------------------
 
       progress.totalSearches =
         progress.searchedTopics.length;
@@ -176,10 +194,9 @@ await User.findOneAndUpdate(
     // CHECK MONGODB CACHE
     // ==========================================
 
-    const cached =
-      await SearchCache.findOne({
-        query: normalizedQuery,
-      });
+    const cached = await SearchCache.findOne({
+      query: normalizedQuery,
+    });
 
     if (cached) {
       console.log(
@@ -242,17 +259,29 @@ await User.findOneAndUpdate(
     }
 
     // ==========================================
+    // CHECK SEARCH RESULTS
+    // ==========================================
+
+    if (
+      !searchData.items ||
+      !Array.isArray(searchData.items)
+    ) {
+      return NextResponse.json([]);
+    }
+
+    // ==========================================
     // GET VIDEO IDS
     // ==========================================
 
     const ids = searchData.items
       .map(
         (item: {
-          id: {
-            videoId: string;
+          id?: {
+            videoId?: string;
           };
-        }) => item.id.videoId
+        }) => item.id?.videoId
       )
+      .filter(Boolean)
       .join(",");
 
     if (!ids) {
@@ -274,34 +303,57 @@ await User.findOneAndUpdate(
     const detailsData =
       await detailsResponse.json();
 
-    const detailsMap = new Map(
-      detailsData.items.map(
+    // ==========================================
+    // CREATE DETAILS MAP
+    // ==========================================
+
+    const detailsMap = new Map<
+      string,
+      {
+        views: string;
+        duration: string;
+      }
+    >();
+
+    if (
+      detailsData.items &&
+      Array.isArray(detailsData.items)
+    ) {
+      detailsData.items.forEach(
         (item: {
           id: string;
-          statistics: {
-            viewCount: string;
+          statistics?: {
+            viewCount?: string;
           };
-          contentDetails: {
-            duration: string;
+          contentDetails?: {
+            duration?: string;
           };
-        }) => [
-          item.id,
-          {
+        }) => {
+          detailsMap.set(item.id, {
             views:
-              item.statistics.viewCount,
+              item.statistics?.viewCount ||
+              "0",
             duration:
-              item.contentDetails.duration,
-          },
-        ]
-      )
-    );
+              item.contentDetails?.duration ||
+              "",
+          });
+        }
+      );
+    }
 
     // ==========================================
     // MERGE DATA
     // ==========================================
 
-    const videos =
-      searchData.items.map(
+    const videos = searchData.items
+      .filter(
+        (item: {
+          id?: {
+            videoId?: string;
+          };
+        }) => Boolean(item.id?.videoId)
+      )
+      .map(
         (item: {
           id: {
             videoId: string;
@@ -339,7 +391,8 @@ await User.findOneAndUpdate(
               item.snippet.thumbnails.high
                 ?.url ||
               item.snippet.thumbnails.medium
-                ?.url,
+                ?.url ||
+              "",
 
             channel:
               item.snippet.channelTitle,
@@ -348,12 +401,10 @@ await User.findOneAndUpdate(
               item.snippet.publishedAt,
 
             views:
-              (extra as any)?.views ||
-              "0",
+              extra?.views || "0",
 
             duration:
-              (extra as any)?.duration ||
-              "",
+              extra?.duration || "",
 
             url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
           };

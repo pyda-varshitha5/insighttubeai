@@ -40,19 +40,23 @@ export default function SearchResultsPage() {
         return;
       }
 
-      if (!user?.uid) {
-        console.log("User not loaded yet.");
-        return;
-      }
-
       setLoading(true);
 
       try {
-        const response = await fetch(
-          `/api/youtube/search?q=${encodeURIComponent(
-            q
-          )}&userId=${encodeURIComponent(user.uid)}`
-        );
+        const userId = user?.uid;
+
+        const url = userId
+          ? `/api/youtube/search?q=${encodeURIComponent(
+              q
+            )}&userId=${encodeURIComponent(userId)}`
+          : `/api/youtube/search?q=${encodeURIComponent(q)}`;
+
+        console.log("Searching:", url);
+
+        const response = await fetch(url, {
+          method: "GET",
+          cache: "no-store",
+        });
 
         if (!response.ok) {
           let errorMessage = "Failed to fetch videos";
@@ -73,7 +77,7 @@ export default function SearchResultsPage() {
 
         const data = await response.json();
 
-        console.log("Results API response:", data);
+        console.log("YouTube API response:", data);
 
         const resultVideos: YouTubeVideo[] = Array.isArray(data)
           ? data
@@ -100,27 +104,33 @@ export default function SearchResultsPage() {
       searchParams.get("q") ||
       searchParams.get("topic");
 
-    if (q && user?.uid) {
-      setQuery(q);
-      handleSearch(q);
+    if (!q) {
+      return;
     }
-  }, [searchParams, user?.uid, handleSearch]);
+
+    setQuery(q);
+
+    void handleSearch(q);
+  }, [searchParams, handleSearch]);
 
   return (
     <div className="w-full">
-      {/* Search Results Header */}
-     {/* Results Header + Action Cards */}
-<div className="mt-6 flex items-start justify-between gap-8">
-  {/* Left: Results Heading */}
-  <div className="min-w-0 flex-1">
-    <SearchResultsHeader query={query} />
-  </div>
 
-  {/* Right: Action Cards */}
-  <div className="shrink-0">
-    <SearchActionCards topic={query} />
-  </div>
-</div>
+      {/* Results Header + Action Cards */}
+      <div className="mt-6 flex items-start justify-between gap-8">
+
+        {/* Left */}
+        <div className="min-w-0 flex-1">
+          <SearchResultsHeader query={query} />
+        </div>
+
+        {/* Right */}
+        <div className="shrink-0">
+          <SearchActionCards topic={query} />
+        </div>
+
+      </div>
+
       {/* Search Filter */}
       <div className="mt-6">
         <SearchFilter
@@ -136,6 +146,7 @@ export default function SearchResultsPage() {
           videos={videos}
           loading={loading}
           onPlay={(videoId: string) => {
+            console.log("Playing video:", videoId);
             setSelectedVideo(videoId);
           }}
         />
@@ -149,6 +160,7 @@ export default function SearchResultsPage() {
           setSelectedVideo(null);
         }}
       />
+
     </div>
   );
 }

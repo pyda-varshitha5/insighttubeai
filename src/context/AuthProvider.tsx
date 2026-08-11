@@ -235,7 +235,22 @@ export function AuthProvider({
               "Admin status:",
               admin
             );
+// ==========================================
+// REDIRECT ADMIN AFTER EXPLICIT ADMIN LOGIN
+// ==========================================
 
+if (
+  admin &&
+  localStorage.getItem("adminLoginIntent") === "true"
+) {
+  localStorage.removeItem("adminLoginIntent");
+
+  console.log("🚀 Admin verified — redirecting to dashboard");
+
+  window.location.href = "/admin/dashboard";
+
+  return;
+}
             // ==========================================
             // IMPORTANT
             // ==========================================

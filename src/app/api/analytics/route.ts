@@ -6,78 +6,322 @@ import User from "@/models/User";
 import Progress from "@/app/models/Progress";
 import { adminAuth } from "@/lib/firebaseAdmin";
 
-interface UserDocument {
-  uid?: string;
-  email?: string;
-  firstName?: string;
-  lastName?: string;
-  photoURL?: string;
-  createdAt?: Date | string | null;
-  updatedAt?: Date | string | null;
-}
+// ======================================================
+// TYPES
+// ======================================================
 
-interface ProgressDocument {
-  userId?: string;
-  totalSearches?: number;
-  totalSummaries?: number;
-  savedSummaries?: number;
-  timeSavedMinutes?: number;
-  quizzesCompleted?: number;
-  streak?: number;
-  lastActive?: Date | string | null;
-}
-
-interface AnalyticsToken extends DecodedIdToken {
+interface FirebaseToken extends DecodedIdToken {
   isAdmin?: boolean;
   admin?: boolean;
 }
 
-export async function GET(req: NextRequest) {
+interface MongoUser {
+  uid?: string;
+  email?: string;
+
+  firstName?: string;
+  lastName?: string;
+  photoURL?: string;
+
+  createdAt?: Date | string | null;
+  updatedAt?: Date | string | null;
+
+  totalSummaries?: number;
+  learningStreak?: number;
+  hoursSaved?: number;
+
+  analytics?: {
+    totalSearches?: number;
+    summariesGenerated?: number;
+    savedSummariesCount?: number;
+    lastActive?: Date | string | null;
+  };
+}
+
+interface MongoProgress {
+  userId?: string;
+
+  totalSearches?: number;
+  totalSummaries?: number;
+  savedSummaries?: number;
+
+  timeSavedMinutes?: number;
+
+  quizzesCompleted?: number;
+  streak?: number;
+
+  lastActive?: Date | string | null;
+}
+
+interface DashboardUser {
+  uid: string;
+
+  firstName: string;
+  lastName: string;
+  name: string;
+
+  email: string;
+  photoURL: string;
+
+  joinedOn: Date | null;
+  createdAt: Date | null;
+
+  lastSignIn: Date | null;
+  lastActive: Date | null;
+
+  lastActiveFormatted: string;
+
+  searches: number;
+  summaries: number;
+  savedSummaries: number;
+
+  timeSavedMinutes: number;
+  timeSavedHours: number;
+
+  quizzesCompleted: number;
+  streak: number;
+
+  status: "Active" | "Inactive";
+}
+
+// ======================================================
+// HELPERS
+// ======================================================
+
+function normalizeEmail(
+  email?: string | null
+): string {
+  return email?.trim().toLowerCase() ?? "";
+}
+
+// ======================================================
+// DATE
+// ======================================================
+
+function getDateValue(
+  value?: Date | string | null
+): Date | null {
+  if (!value) {
+    return null;
+  }
+
+  const date =
+    value instanceof Date
+      ? value
+      : new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? null
+    : date;
+}
+
+// ======================================================
+// USER NAME
+// ======================================================
+
+function getUserName(
+  firstName?: string,
+  lastName?: string,
+  email?: string
+): string {
+  const fullName =
+    `${firstName ?? ""} ${lastName ?? ""}`
+      .trim();
+
+  if (fullName) {
+    return fullName;
+  }
+
+  if (email) {
+    return email.split("@")[0];
+  }
+
+  return "User";
+}
+
+// ======================================================
+// ACTIVE USER
+// ======================================================
+
+function isActiveWithinDays(
+  lastActive: Date | null,
+  days: number
+): boolean {
+  if (!lastActive) {
+    return false;
+  }
+
+  const difference =
+    Date.now() -
+    lastActive.getTime();
+
+  const limit =
+    days *
+    24 *
+    60 *
+    60 *
+    1000;
+
+  return (
+    difference >= 0 &&
+    difference <= limit
+  );
+}
+
+// ======================================================
+// RELATIVE TIME
+// ======================================================
+
+function formatRelativeTime(
+  date: Date | null
+): string {
+  if (!date) {
+    return "Never";
+  }
+
+  const difference =
+    Date.now() -
+    date.getTime();
+
+  if (difference < 0) {
+    return "Just now";
+  }
+
+  const minutes =
+    Math.floor(
+      difference / 60000
+    );
+
+  if (minutes < 1) {
+    return "Just now";
+  }
+
+  if (minutes < 60) {
+    return `${minutes} min ago`;
+  }
+
+  const hours =
+    Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `${hours} hr ago`;
+  }
+
+  const days =
+    Math.floor(hours / 24);
+
+  if (days < 7) {
+    return `${days} day${
+      days === 1 ? "" : "s"
+    } ago`;
+  }
+
+  return date.toLocaleDateString(
+    "en-IN"
+  );
+}
+
+// ======================================================
+// ADMIN CHECK
+// ======================================================
+
+function isAdminUser(
+  email?: string | null,
+  token?: FirebaseToken
+): boolean {
+  const normalizedEmail =
+    normalizeEmail(email);
+
+  const adminEmails = [
+    process.env.ADMIN_EMAIL,
+    process.env.ADMIN_EMAIL_1,
+    process.env.ADMIN_EMAIL_2,
+  ]
+    .map(normalizeEmail)
+    .filter(Boolean);
+
+  const emailIsAdmin =
+    normalizedEmail !== "" &&
+    adminEmails.includes(
+      normalizedEmail
+    );
+
+  const claimIsAdmin =
+    token?.isAdmin === true ||
+    token?.admin === true;
+
+  return (
+    emailIsAdmin ||
+    claimIsAdmin
+  );
+}
+
+// ======================================================
+// GET
+// ======================================================
+
+export async function GET(
+  request: NextRequest
+) {
   try {
-    // ---------------------------------------------------------
-    // 1. CONNECT TO DATABASE
-    // ---------------------------------------------------------
+    // ====================================================
+    // 1. AUTHORIZATION
+    // ====================================================
 
-    await connectDB();
+    const authorization =
+      request.headers.get(
+        "authorization"
+      );
 
-    // ---------------------------------------------------------
-    // 2. GET FIREBASE AUTH TOKEN
-    // ---------------------------------------------------------
-
-    const authorization = req.headers.get("authorization");
-
-    if (!authorization || !authorization.startsWith("Bearer ")) {
+    if (
+      !authorization ||
+      !authorization.startsWith(
+        "Bearer "
+      )
+    ) {
       return NextResponse.json(
         {
           success: false,
           error: "Unauthorized",
         },
-        { status: 401 }
+        {
+          status: 401,
+        }
       );
     }
 
-    const token = authorization.replace("Bearer ", "").trim();
+    const token =
+      authorization
+        .replace(
+          "Bearer ",
+          ""
+        )
+        .trim();
 
     if (!token) {
       return NextResponse.json(
         {
           success: false,
-          error: "Missing authentication token",
+          error:
+            "Missing authentication token",
         },
-        { status: 401 }
+        {
+          status: 401,
+        }
       );
     }
 
-    // ---------------------------------------------------------
-    // 3. VERIFY FIREBASE TOKEN
-    // ---------------------------------------------------------
+    // ====================================================
+    // 2. VERIFY FIREBASE TOKEN
+    // ====================================================
 
-    let decodedToken: AnalyticsToken;
+    let decodedToken: FirebaseToken;
 
     try {
-      decodedToken = (await adminAuth.verifyIdToken(
-        token
-      )) as AnalyticsToken;
+      decodedToken =
+        (await adminAuth.verifyIdToken(
+          token
+        )) as FirebaseToken;
     } catch (error) {
       console.error(
         "Firebase token verification failed:",
@@ -87,239 +331,938 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid authentication token",
+          error:
+            "Invalid authentication token",
         },
-        { status: 401 }
+        {
+          status: 401,
+        }
       );
     }
 
-    const uid = decodedToken.uid;
-    const email = decodedToken.email;
+    const adminEmail =
+      normalizeEmail(
+        decodedToken.email
+      );
 
-    if (!uid) {
+    // ====================================================
+    // 3. ADMIN VERIFICATION
+    // ====================================================
+
+    const admin =
+      isAdminUser(
+        adminEmail,
+        decodedToken
+      );
+
+    console.log(
+      "================================="
+    );
+
+    console.log(
+      "ANALYTICS ADMIN VERIFICATION"
+    );
+
+    console.log(
+      "Email:",
+      adminEmail
+    );
+
+    console.log(
+      "Is Admin:",
+      admin
+    );
+
+    console.log(
+      "================================="
+    );
+
+    if (!admin) {
       return NextResponse.json(
         {
           success: false,
-          error: "User ID not found",
+          error:
+            "Admin access required",
         },
-        { status: 401 }
-      );
-    }
-
-    // ---------------------------------------------------------
-    // 4. FIND CURRENT USER
-    // ---------------------------------------------------------
-
-    const userResult = await User.findOne({
-      $or: [
-        { uid: uid },
-        ...(email ? [{ email: email }] : []),
-      ],
-    }).lean();
-
-    if (!userResult) {
-      return NextResponse.json(
         {
-          success: false,
-          error: "User not found",
-        },
-        { status: 404 }
+          status: 403,
+        }
       );
     }
 
-    const user = userResult as unknown as UserDocument;
+    // ====================================================
+    // 4. CONNECT DATABASE
+    // ====================================================
 
-    // ---------------------------------------------------------
-    // 5. GET CURRENT USER'S PROGRESS
-    // ---------------------------------------------------------
+    await connectDB();
 
-    const progressResult = await Progress.findOne({
-      userId: uid,
-    }).lean();
+    // ====================================================
+    // 5. FIREBASE USERS
+    // ====================================================
 
-    const progress =
-      progressResult as unknown as ProgressDocument | null;
+    const firebaseUsers: any[] = [];
 
-    // ---------------------------------------------------------
-    // 6. DASHBOARD STATISTICS
-    // ---------------------------------------------------------
+    let nextPageToken:
+      | string
+      | undefined;
 
-    const totalSearches = Number(
-      progress?.totalSearches ?? 0
+    do {
+      const result =
+        await adminAuth.listUsers(
+          1000,
+          nextPageToken
+        );
+
+      firebaseUsers.push(
+        ...result.users
+      );
+
+      nextPageToken =
+        result.pageToken;
+    } while (nextPageToken);
+
+    console.log(
+      "Firebase users:",
+      firebaseUsers.length
     );
 
-    const totalSummaries = Number(
-      progress?.totalSummaries ?? 0
+    // ====================================================
+    // 6. MONGODB USERS
+    // ====================================================
+
+    const mongoUsers =
+      (await User.find({})
+        .lean()) as unknown as MongoUser[];
+
+    console.log(
+      "MongoDB users:",
+      mongoUsers.length
     );
 
-    const savedSummaries = Number(
-      progress?.savedSummaries ?? 0
+    // ====================================================
+    // 7. PROGRESS
+    // ====================================================
+
+    const progressRecords =
+      (await Progress.find({})
+        .lean()) as unknown as MongoProgress[];
+
+    console.log(
+      "Progress records:",
+      progressRecords.length
     );
 
-    const timeSavedMinutes = Number(
-      progress?.timeSavedMinutes ?? 0
+    // ====================================================
+    // 8. MONGO LOOKUP BY UID
+    // ====================================================
+
+    const mongoUserMap =
+      new Map<string, MongoUser>();
+
+    // ====================================================
+    // MONGO LOOKUP BY EMAIL
+    // ====================================================
+
+    const mongoEmailMap =
+      new Map<string, MongoUser>();
+
+    for (const mongoUser of mongoUsers) {
+      if (mongoUser.uid) {
+        mongoUserMap.set(
+          mongoUser.uid,
+          mongoUser
+        );
+      }
+
+      if (mongoUser.email) {
+        mongoEmailMap.set(
+          normalizeEmail(
+            mongoUser.email
+          ),
+          mongoUser
+        );
+      }
+    }
+
+    // ====================================================
+    // 9. PROGRESS LOOKUP
+    // ====================================================
+
+    const progressMap =
+      new Map<
+        string,
+        MongoProgress
+      >();
+
+    for (const progress of progressRecords) {
+      if (progress.userId) {
+        progressMap.set(
+          progress.userId,
+          progress
+        );
+      }
+    }
+
+    // ====================================================
+    // 10. FINAL USER MAP
+    //
+    // IMPORTANT:
+    // We combine BOTH Firebase + MongoDB.
+    //
+    // This fixes the problem where Firebase
+    // users are unavailable but MongoDB has users.
+    // ====================================================
+
+    const userMap =
+      new Map<
+        string,
+        {
+          firebaseUser?: any;
+          mongoUser?: MongoUser;
+        }
+      >();
+
+    // ----------------------------------------------------
+    // Add Firebase users
+    // ----------------------------------------------------
+
+    for (
+      const firebaseUser
+      of firebaseUsers
+    ) {
+      const uid =
+        firebaseUser.uid;
+
+      userMap.set(
+        uid,
+        {
+          firebaseUser,
+          mongoUser:
+            mongoUserMap.get(
+              uid
+            ) ??
+            mongoEmailMap.get(
+              normalizeEmail(
+                firebaseUser.email
+              )
+            ),
+        }
+      );
+    }
+
+    // ----------------------------------------------------
+    // Add MongoDB users that don't exist
+    // in Firebase list
+    // ----------------------------------------------------
+
+    for (
+      const mongoUser
+      of mongoUsers
+    ) {
+      const uid =
+        mongoUser.uid;
+
+      if (uid) {
+        if (!userMap.has(uid)) {
+          userMap.set(
+            uid,
+            {
+              mongoUser,
+            }
+          );
+        }
+
+        continue;
+      }
+
+      // If UID isn't stored, use email
+      const email =
+        normalizeEmail(
+          mongoUser.email
+        );
+
+      if (!email) {
+        continue;
+      }
+
+      const firebaseMatch =
+        firebaseUsers.find(
+          (firebaseUser) =>
+            normalizeEmail(
+              firebaseUser.email
+            ) === email
+        );
+
+      if (firebaseMatch) {
+        continue;
+      }
+
+      // Use email as fallback identifier
+      userMap.set(
+        `mongo-${email}`,
+        {
+          mongoUser,
+        }
+      );
+    }
+
+    // ====================================================
+    // 11. BUILD DASHBOARD USERS
+    // ====================================================
+
+    const users: DashboardUser[] =
+      Array.from(
+        userMap.entries()
+      ).map(
+        ([
+          mapKey,
+          record,
+        ]) => {
+          const firebaseUser =
+            record.firebaseUser;
+
+          const mongoUser =
+            record.mongoUser;
+
+          // ------------------------------------------------
+          // UID
+          // ------------------------------------------------
+
+          const uid =
+            firebaseUser?.uid ??
+            mongoUser?.uid ??
+            mapKey;
+
+          // ------------------------------------------------
+          // EMAIL
+          // ------------------------------------------------
+
+          const email =
+            firebaseUser?.email ??
+            mongoUser?.email ??
+            "";
+
+          // ------------------------------------------------
+          // CREATED
+          // ------------------------------------------------
+
+          const firebaseCreatedAt =
+            firebaseUser
+              ?.metadata
+              ?.creationTime
+              ? new Date(
+                  firebaseUser.metadata
+                    .creationTime
+                )
+              : null;
+
+          const mongoCreatedAt =
+            getDateValue(
+              mongoUser?.createdAt
+            );
+
+          const createdAt =
+            firebaseCreatedAt ??
+            mongoCreatedAt;
+
+          // ------------------------------------------------
+          // LAST SIGN IN
+          // ------------------------------------------------
+
+          const firebaseLastSignIn =
+            firebaseUser
+              ?.metadata
+              ?.lastSignInTime
+              ? new Date(
+                  firebaseUser.metadata
+                    .lastSignInTime
+                )
+              : null;
+
+          // ------------------------------------------------
+          // PROGRESS
+          // ------------------------------------------------
+
+          const progress =
+            progressMap.get(
+              uid
+            );
+
+          // ------------------------------------------------
+          // LAST ACTIVE
+          // ------------------------------------------------
+
+          const mongoLastActive =
+            getDateValue(
+              progress?.lastActive ??
+                mongoUser
+                  ?.analytics
+                  ?.lastActive ??
+                mongoUser
+                  ?.updatedAt ??
+                null
+            );
+
+          const lastActive =
+            firebaseLastSignIn ??
+            mongoLastActive ??
+            createdAt;
+
+          // ------------------------------------------------
+          // NAME
+          // ------------------------------------------------
+
+          const displayName =
+            firebaseUser
+              ?.displayName
+              ?.trim() ?? "";
+
+          const firebaseFirstName =
+            displayName
+              ? displayName.split(
+                  " "
+                )[0]
+              : "";
+
+          const firebaseLastName =
+            displayName
+              ? displayName
+                .split(" ")
+                .slice(1)
+                .join(" ")
+              : "";
+
+          const firstName =
+            mongoUser?.firstName ||
+            firebaseFirstName ||
+            "User";
+
+          const lastName =
+            mongoUser?.lastName ||
+            firebaseLastName ||
+            "";
+
+          const name =
+            getUserName(
+              firstName,
+              lastName,
+              email
+            );
+
+          // ------------------------------------------------
+          // PHOTO
+          // ------------------------------------------------
+
+          const photoURL =
+            firebaseUser?.photoURL ||
+            mongoUser?.photoURL ||
+            "";
+
+          // ------------------------------------------------
+          // SEARCHES
+          // ------------------------------------------------
+
+          const searches =
+            Number(
+              progress?.totalSearches ??
+                mongoUser
+                  ?.analytics
+                  ?.totalSearches ??
+                0
+            );
+
+          // ------------------------------------------------
+          // SUMMARIES
+          // ------------------------------------------------
+
+          const summaries =
+            Number(
+              progress?.totalSummaries ??
+                mongoUser
+                  ?.analytics
+                  ?.summariesGenerated ??
+                mongoUser
+                  ?.totalSummaries ??
+                0
+            );
+
+          // ------------------------------------------------
+          // SAVED SUMMARIES
+          // ------------------------------------------------
+
+          const savedSummaries =
+            Number(
+              progress?.savedSummaries ??
+                mongoUser
+                  ?.analytics
+                  ?.savedSummariesCount ??
+                0
+            );
+
+          // ------------------------------------------------
+          // TIME SAVED
+          // ------------------------------------------------
+
+          const timeSavedMinutes =
+            Number(
+              progress
+                ?.timeSavedMinutes ??
+                0
+            );
+
+          const timeSavedHours =
+            Number(
+              (
+                timeSavedMinutes /
+                60
+              ).toFixed(1)
+            );
+
+          // ------------------------------------------------
+          // QUIZZES
+          // ------------------------------------------------
+
+          const quizzesCompleted =
+            Number(
+              progress
+                ?.quizzesCompleted ??
+                0
+            );
+
+          // ------------------------------------------------
+          // STREAK
+          // ------------------------------------------------
+
+          const streak =
+            Number(
+              progress?.streak ??
+                mongoUser
+                  ?.learningStreak ??
+                0
+            );
+
+          // ------------------------------------------------
+          // STATUS
+          // ------------------------------------------------
+
+          const active =
+            isActiveWithinDays(
+              lastActive,
+              20
+            );
+
+          return {
+            uid,
+
+            firstName,
+            lastName,
+            name,
+
+            email,
+            photoURL,
+
+            joinedOn:
+              createdAt,
+
+            createdAt,
+
+            lastSignIn:
+              firebaseLastSignIn,
+
+            lastActive,
+
+            lastActiveFormatted:
+              formatRelativeTime(
+                lastActive
+              ),
+
+            searches,
+            summaries,
+            savedSummaries,
+
+            timeSavedMinutes,
+            timeSavedHours,
+
+            quizzesCompleted,
+            streak,
+
+            status:
+              active
+                ? "Active"
+                : "Inactive",
+          };
+        }
+      );
+
+    // ====================================================
+    // 12. REMOVE DUPLICATES
+    // ====================================================
+
+    const uniqueUsers =
+      Array.from(
+        new Map(
+          users.map(
+            (user) => [
+              user.uid,
+              user,
+            ]
+          )
+        ).values()
+      );
+
+    // ====================================================
+    // 13. SORT USERS
+    // ====================================================
+
+    uniqueUsers.sort(
+      (a, b) => {
+        const dateA =
+          a.createdAt
+            ? a.createdAt.getTime()
+            : 0;
+
+        const dateB =
+          b.createdAt
+            ? b.createdAt.getTime()
+            : 0;
+
+        return dateB - dateA;
+      }
     );
 
-    const timeSavedHours = Number(
-      (timeSavedMinutes / 60).toFixed(1)
+    // ====================================================
+    // 14. TOTAL USERS
+    // ====================================================
+
+    const totalUsers =
+      uniqueUsers.length;
+
+    // ====================================================
+    // 15. TOTAL SEARCHES
+    // ====================================================
+
+    const totalSearches =
+      uniqueUsers.reduce(
+        (
+          total,
+          user
+        ) =>
+          total +
+          Number(
+            user.searches ?? 0
+          ),
+        0
+      );
+
+    // ====================================================
+    // 16. TOTAL SUMMARIES
+    // ====================================================
+
+    const totalSummaries =
+      uniqueUsers.reduce(
+        (
+          total,
+          user
+        ) =>
+          total +
+          Number(
+            user.summaries ?? 0
+          ),
+        0
+      );
+
+    // ====================================================
+    // 17. TOTAL SAVED
+    // ====================================================
+
+    const totalSavedSummaries =
+      uniqueUsers.reduce(
+        (
+          total,
+          user
+        ) =>
+          total +
+          Number(
+            user.savedSummaries ??
+              0
+          ),
+        0
+      );
+
+    // ====================================================
+    // 18. TOTAL TIME SAVED
+    // ====================================================
+
+    const totalTimeSavedMinutes =
+      uniqueUsers.reduce(
+        (
+          total,
+          user
+        ) =>
+          total +
+          Number(
+            user.timeSavedMinutes ??
+              0
+          ),
+        0
+      );
+
+    const totalTimeSavedHours =
+      Number(
+        (
+          totalTimeSavedMinutes /
+          60
+        ).toFixed(1)
+      );
+
+    // ====================================================
+    // 19. TOTAL QUIZZES
+    // ====================================================
+
+    const totalQuizzesCompleted =
+      uniqueUsers.reduce(
+        (
+          total,
+          user
+        ) =>
+          total +
+          Number(
+            user.quizzesCompleted ??
+              0
+          ),
+        0
+      );
+
+    // ====================================================
+    // 20. ACTIVE USERS
+    // ====================================================
+
+    const activeUsers =
+      uniqueUsers.filter(
+        (user) =>
+          user.status ===
+          "Active"
+      ).length;
+
+    // ====================================================
+    // 21. REGISTRATIONS
+    // ====================================================
+
+    const registrationMap =
+      new Map<
+        string,
+        number
+      >();
+
+    for (
+      const user
+      of uniqueUsers
+    ) {
+      if (!user.createdAt) {
+        continue;
+      }
+
+      const key =
+        user.createdAt.toLocaleDateString(
+          "en-IN"
+        );
+
+      registrationMap.set(
+        key,
+        (
+          registrationMap.get(
+            key
+          ) ?? 0
+        ) + 1
+      );
+    }
+
+    const registrations =
+      Array.from(
+        registrationMap.entries()
+      ).map(
+        ([
+          date,
+          count,
+        ]) => ({
+          date,
+          count,
+        })
+      );
+
+    // ====================================================
+    // 22. SEARCHES BY USER
+    // ====================================================
+
+    const searchesByUser =
+      uniqueUsers.map(
+        (user) => ({
+          name: user.name,
+          email: user.email,
+          searches:
+            user.searches,
+        })
+      );
+
+    // ====================================================
+    // 23. SUMMARIES BY USER
+    // ====================================================
+
+    const summariesByUser =
+      uniqueUsers.map(
+        (user) => ({
+          name: user.name,
+          email: user.email,
+          summaries:
+            user.summaries,
+        })
+      );
+
+    // ====================================================
+    // 24. DEBUG LOG
+    // ====================================================
+
+    console.log(
+      "================================="
     );
 
-    const quizzesCompleted = Number(
-      progress?.quizzesCompleted ?? 0
+    console.log(
+      "ADMIN ANALYTICS RESULT"
     );
 
-    const streak = Number(
-      progress?.streak ?? 0
+    console.log(
+      "Firebase users:",
+      firebaseUsers.length
     );
 
-    // ---------------------------------------------------------
-    // 7. LAST ACTIVE
-    // ---------------------------------------------------------
+    console.log(
+      "MongoDB users:",
+      mongoUsers.length
+    );
 
-    const lastActive =
-      progress?.lastActive ??
-      user.updatedAt ??
-      user.createdAt ??
-      null;
+    console.log(
+      "Progress records:",
+      progressRecords.length
+    );
 
-    // ---------------------------------------------------------
-    // 8. USER NAME
-    // ---------------------------------------------------------
+    console.log(
+      "Final dashboard users:",
+      uniqueUsers.length
+    );
 
-    const firstName = user.firstName ?? "";
-    const lastName = user.lastName ?? "";
+    console.log(
+      "Total searches:",
+      totalSearches
+    );
 
-    const fallbackName =
-      user.email?.split("@")[0] ?? "User";
+    console.log(
+      "Total summaries:",
+      totalSummaries
+    );
 
-    const name =
-      `${firstName} ${lastName}`.trim() ||
-      fallbackName;
+    console.log(
+      "Active users:",
+      activeUsers
+    );
 
-    // ---------------------------------------------------------
-    // 9. USER ANALYTICS OBJECT
-    // ---------------------------------------------------------
+    console.log(
+      "================================="
+    );
 
-    const userAnalytics = {
-      uid: uid,
+    // ====================================================
+    // 25. RESPONSE
+    // ====================================================
 
-      firstName: firstName,
+    return NextResponse.json(
+      {
+        success: true,
 
-      lastName: lastName,
+        stats: {
+          totalUsers,
+          totalSearches,
+          totalSummaries,
+          totalSavedSummaries,
 
-      name: name,
+          totalTimeSavedMinutes,
+          totalTimeSavedHours,
 
-      email:
-        user.email ??
-        decodedToken.email ??
-        "",
+          totalQuizzesCompleted,
 
-      photoURL:
-        user.photoURL ??
-        "",
+          activeUsers,
 
-      joinedOn:
-        user.createdAt ?? null,
+          activeUsers7Days:
+            activeUsers,
+        },
 
-      createdAt:
-        user.createdAt ?? null,
+        overview: {
+          totalUsers,
+          totalSearches,
+          totalSummaries,
+          totalSavedSummaries,
 
-      updatedAt:
-        user.updatedAt ?? null,
+          totalTimeSavedMinutes,
+          totalTimeSavedHours,
 
-      searches: totalSearches,
+          totalQuizzesCompleted,
 
-      summaries: totalSummaries,
+          activeUsers,
 
-      savedSummaries: savedSummaries,
+          activeUsers7Days:
+            activeUsers,
+        },
 
-      timeSavedMinutes: timeSavedMinutes,
+        users: uniqueUsers,
 
-      timeSavedHours: timeSavedHours,
+        userAnalytics:
+          uniqueUsers,
 
-      quizzesCompleted: quizzesCompleted,
+        analytics: {
+          registrations,
+          searchesByUser,
+          summariesByUser,
+        },
 
-      streak: streak,
+        totals: {
+          totalUsers,
+          totalSearches,
+          totalSummaries,
+          totalSavedSummaries,
 
-      lastActive: lastActive,
+          totalTimeSavedMinutes,
+          totalTimeSavedHours,
 
-      status: lastActive
-        ? "Active"
-        : "Inactive",
-    };
+          totalQuizzesCompleted,
 
-    // ---------------------------------------------------------
-    // 10. RESPONSE
-    // ---------------------------------------------------------
-
-    return NextResponse.json({
-      success: true,
-
-      // Current user's overview
-      overview: {
-        totalSearches,
-        totalSummaries,
-        totalSavedSummaries: savedSummaries,
-        totalTimeSavedMinutes: timeSavedMinutes,
-        totalTimeSavedHours: timeSavedHours,
-        totalQuizzesCompleted: quizzesCompleted,
-        streak,
+          activeUsers,
+        },
       },
+      {
+        status: 200,
 
-      // Current user
-      user: userAnalytics,
-
-      // Keep this for compatibility
-      userAnalytics,
-
-      // Progress object
-      progress: {
-        uid: uid,
-
-        totalSearches,
-
-        totalSummaries,
-
-        savedSummaries,
-
-        timeSavedMinutes,
-
-        quizzesCompleted,
-
-        streak,
-
-        lastActive,
-      },
-
-      // Also provide direct values
-      totalSearches,
-
-      totalSummaries,
-
-      savedSummaries,
-
-      timeSavedMinutes,
-
-      timeSavedHours,
-
-      quizzesCompleted,
-
-      streak,
-
-      lastActive,
-    });
+        headers: {
+          "Cache-Control":
+            "no-store",
+        },
+      }
+    );
   } catch (error) {
     console.error(
-      "USER ANALYTICS ERROR:",
+      "ADMIN ANALYTICS ERROR:",
       error
     );
 
     return NextResponse.json(
       {
         success: false,
-        error: "Internal Server Error",
+
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to load admin analytics",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }

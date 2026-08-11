@@ -4,12 +4,12 @@ import React, {
   useEffect,
   useState,
 } from "react";
-
+import { useRouter } from "next/navigation";
 import {
   BookOpen,
   BarChart3,
-  Clock,
   Bookmark,
+  Trophy,
   TrendingUp,
   Search,
   FileText,
@@ -21,8 +21,7 @@ interface ProgressData {
   totalSearches: number;
   totalSummaries: number;
   savedSummaries: number;
-  timeSavedMinutes?: number;
-  hoursSaved?: number;
+  quizzesCompleted: number;
 }
 
 interface WeeklyActivity {
@@ -49,14 +48,13 @@ interface AnalyticsData {
 
 export default function AnalyticsPage() {
   const { user } = useAuth();
-
+const router = useRouter();
   const [progress, setProgress] =
     useState<ProgressData>({
       totalSearches: 0,
       totalSummaries: 0,
       savedSummaries: 0,
-      timeSavedMinutes: 0,
-      hoursSaved: 0,
+      quizzesCompleted: 0,
     });
 
   const [analytics, setAnalytics] =
@@ -114,12 +112,8 @@ export default function AnalyticsPage() {
               progressData.savedSummaries || 0
             ),
 
-            timeSavedMinutes: Number(
-              progressData.timeSavedMinutes || 0
-            ),
-
-            hoursSaved: Number(
-              progressData.hoursSaved || 0
+            quizzesCompleted: Number(
+              progressData.quizzesCompleted || 0
             ),
           });
         }
@@ -250,16 +244,6 @@ export default function AnalyticsPage() {
   }, [user]);
 
   // =====================================================
-  // TIME SAVED
-  // =====================================================
-
-  const timeSavedHours = (
-    Number(
-      progress.timeSavedMinutes || 0
-    ) / 60
-  ).toFixed(1);
-
-  // =====================================================
   // WEEKLY MAX
   // =====================================================
 
@@ -373,26 +357,26 @@ export default function AnalyticsPage() {
           </p>
         </div>
 
-        {/* TIME SAVED */}
+        {/* QUIZZES COMPLETED */}
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-violet-50">
-            <Clock
+            <Trophy
               size={22}
               className="text-violet-600"
             />
           </div>
 
           <p className="text-sm text-slate-500">
-            Time Saved
+            Quizzes Completed
           </p>
 
           <p className="mt-1 text-2xl font-bold text-slate-900">
-            {timeSavedHours}h
+            {progress.quizzesCompleted}
           </p>
 
           <p className="mt-1 text-xs text-slate-400">
-            Hours
+            Total
           </p>
         </div>
 
@@ -426,9 +410,7 @@ export default function AnalyticsPage() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
 
-        {/* =================================================
-            LEARNING ACTIVITY
-        ================================================= */}
+        {/* LEARNING ACTIVITY */}
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
 
@@ -450,9 +432,7 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          {/* =================================================
-              SUN -> SAT CHART
-          ================================================= */}
+          {/* SUN -> SAT CHART */}
 
           <div className="h-64">
 
@@ -518,9 +498,7 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* =================================================
-            LEARNING INSIGHTS
-        ================================================= */}
+        {/* LEARNING INSIGHTS */}
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
@@ -633,17 +611,17 @@ export default function AnalyticsPage() {
               </div>
             </div>
 
-            {/* SAVED */}
+            {/* QUIZZES */}
 
             <div>
               <div className="mb-2 flex justify-between">
 
                 <span className="text-sm text-slate-600">
-                  Saved Items
+                  Quizzes Completed
                 </span>
 
                 <span className="text-sm font-semibold text-slate-900">
-                  {progress.savedSummaries}
+                  {progress.quizzesCompleted}
                 </span>
 
               </div>
@@ -655,7 +633,7 @@ export default function AnalyticsPage() {
                   style={{
                     width:
                       `${Math.min(
-                        progress.savedSummaries *
+                        progress.quizzesCompleted *
                           10,
                         100
                       )}%`,
@@ -673,93 +651,103 @@ export default function AnalyticsPage() {
           RECENT LEARNING
       ================================================= */}
 
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+     {/* =================================================
+    RECENT LEARNING
+================================================= */}
 
-        <div className="mb-5">
+<div className="mt-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
-          <h2 className="text-lg font-semibold text-slate-900">
-            Recent Learning
-          </h2>
+  <div className="mb-5 flex items-center justify-between">
+    <div>
+      <h2 className="text-lg font-semibold text-slate-900">
+        Recent Learning
+      </h2>
 
-          <p className="mt-1 text-sm text-slate-500">
-            Your latest searches and learning activity
-          </p>
+      <p className="mt-1 text-sm text-slate-500">
+        Your latest searches and learning activity
+      </p>
+    </div>
+  </div>
 
-        </div>
+  {analytics.recentLearning.length === 0 ? (
+    <div className="py-8 text-center">
 
-        {analytics.recentLearning.length ===
-        0 ? (
-          <div className="py-8 text-center">
+      <Search
+        size={24}
+        className="mx-auto mb-2 text-slate-300"
+      />
 
-            <Search
-              size={24}
-              className="mx-auto mb-2 text-slate-300"
-            />
+      <p className="text-sm text-slate-400">
+        No learning activity yet.
+      </p>
 
-            <p className="text-sm text-slate-400">
-              No learning activity yet.
-            </p>
+    </div>
+  ) : (
+    <div className="space-y-2">
 
-          </div>
-        ) : (
-          <div className="space-y-2">
+      {analytics.recentLearning
+        .slice(0, 3)
+        .map((item) => (
 
-            {analytics.recentLearning.map(
-              (item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => {
+              const query =
+                encodeURIComponent(item.title);
 
-                <div
-                  key={item.id}
-                  className="flex items-center gap-4 rounded-xl p-3 transition hover:bg-slate-50"
-                >
+              router.push(
+                `/search?q=${query}`
+              );
+            }}
+            className="group flex w-full items-center gap-4 rounded-xl p-3 text-left transition hover:bg-slate-50"
+          >
 
-                  {/* ICON */}
+            {/* ICON */}
 
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50">
 
-                    {item.type ===
-                    "Summary" ? (
-                      <FileText
-                        size={18}
-                        className="text-violet-600"
-                      />
-                    ) : (
-                      <Search
-                        size={18}
-                        className="text-violet-600"
-                      />
-                    )}
+              {item.type === "Summary" ? (
+                <FileText
+                  size={18}
+                  className="text-violet-600"
+                />
+              ) : (
+                <Search
+                  size={18}
+                  className="text-violet-600"
+                />
+              )}
 
-                  </div>
+            </div>
 
-                  {/* CONTENT */}
+            {/* CONTENT */}
 
-                  <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1">
 
-                    <p className="truncate text-sm font-medium text-slate-800">
-                      {item.title}
-                    </p>
+              <p className="truncate text-sm font-medium text-slate-800 group-hover:text-violet-600">
+                {item.title}
+              </p>
 
-                    <p className="mt-1 text-xs text-slate-400">
-                      {item.description}
-                    </p>
+              <p className="mt-1 text-xs text-slate-400">
+                {item.description}
+              </p>
 
-                  </div>
+            </div>
 
-                  {/* TIME */}
+            {/* TIME */}
 
-                  <span className="shrink-0 text-xs text-slate-400">
-                    {formatRelativeTime(
-                      item.time
-                    )}
-                  </span>
+            <span className="shrink-0 text-xs text-slate-400">
+              {formatRelativeTime(item.time)}
+            </span>
 
-                </div>
-              )
-            )}
+          </button>
 
-          </div>
-        )}
-      </div>
+        ))}
+    </div>
+  )}
+</div>
+
     </div>
   );
 }

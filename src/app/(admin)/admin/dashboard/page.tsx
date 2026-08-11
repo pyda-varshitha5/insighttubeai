@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ElementType } from "react";
 import {
   Users,
   Search,
   FileText,
-  TrendingUp,
   CalendarDays,
+  ClipboardCheck,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthProvider";
 
@@ -14,27 +15,64 @@ import { useAuth } from "@/context/AuthProvider";
 // TYPES
 // ======================================================
 
+type UserStatus = "Active" | "Inactive";
+
 type UserAnalytics = {
   uid: string;
-  name: string;
-  email: string;
+  firstName?: string;
+  lastName?: string;
+  name?: string;
+  email?: string;
   photoURL?: string;
-  searches: number;
-  summaries: number;
-  savedSummaries: number;
+
+  searches?: number;
+  summaries?: number;
+  savedSummaries?: number;
+  quizzesCompleted?: number;
+
   lastActive?: string;
+  lastSignIn?: string;
   createdAt?: string;
+  joinedOn?: string;
+
+  status?: UserStatus;
+};
+
+type RegistrationData = {
+  date: string;
+  count: number;
 };
 
 type AnalyticsData = {
-  success: boolean;
-  stats: {
-    totalUsers: number;
-    totalSearches: number;
-    totalSummaries: number;
-    totalSavedSummaries: number;
+  success?: boolean;
+
+  stats?: {
+    totalUsers?: number;
+    totalSearches?: number;
+    totalSummaries?: number;
+    totalSavedSummaries?: number;
+    totalQuizzesCompleted?: number;
+    activeUsers?: number;
+    activeUsers7Days?: number;
   };
-  users: UserAnalytics[];
+
+  users?: UserAnalytics[];
+
+  analytics?: {
+    registrations?: RegistrationData[];
+
+    searchesByUser?: {
+      name: string;
+      email: string;
+      searches: number;
+    }[];
+
+    summariesByUser?: {
+      name: string;
+      email: string;
+      summaries: number;
+    }[];
+  };
 };
 
 // ======================================================
@@ -44,12 +82,14 @@ type AnalyticsData = {
 function StatCard({
   title,
   value,
+  subtitle,
   icon: Icon,
   iconClass,
 }: {
   title: string;
   value: number;
-  icon: React.ElementType;
+  subtitle: string;
+  icon: ElementType;
   iconClass: string;
 }) {
   return (
@@ -65,7 +105,7 @@ function StatCard({
           </h2>
 
           <p className="mt-2 text-xs font-medium text-slate-400">
-            Current platform data
+            {subtitle}
           </p>
         </div>
 
@@ -83,7 +123,7 @@ function StatCard({
 // USER STATUS
 // ======================================================
 
-function getStatus(lastActive?: string) {
+function getStatus(lastActive?: string): UserStatus {
   if (!lastActive) {
     return "Inactive";
   }
@@ -96,10 +136,11 @@ function getStatus(lastActive?: string) {
 
   const now = Date.now();
 
-  const sevenDays =
-    7 * 24 * 60 * 60 * 1000;
+  // Active if user was active within last 20 days
+  const twentyDays =
+    20 * 24 * 60 * 60 * 1000;
 
-  return now - last <= sevenDays
+  return now - last <= twentyDays
     ? "Active"
     : "Inactive";
 }
@@ -144,10 +185,12 @@ function formatLastActive(date?: string) {
     return "Never";
   }
 
-  const last = parsedDate.getTime();
-  const now = Date.now();
+  const difference =
+    Date.now() - parsedDate.getTime();
 
-  const difference = now - last;
+  if (difference < 0) {
+    return "Just now";
+  }
 
   const minutes = Math.floor(
     difference / (1000 * 60)
@@ -173,14 +216,17 @@ function formatLastActive(date?: string) {
     return `${hours} hr ago`;
   }
 
-  if (days < 7) {
-    return `${days} day${
-      days === 1 ? "" : "s"
-    } ago`;
+  if (days < 20) {
+    return `${days} day${days === 1 ? "" : "s"} ago`;
   }
 
   return parsedDate.toLocaleDateString(
-    "en-IN"
+    "en-IN",
+    {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }
   );
 }
 
@@ -196,7 +242,7 @@ function MiniChart({
   const width = 300;
   const height = 100;
 
-  if (!data.length) {
+  if (!Array.isArray(data) || data.length === 0) {
     return (
       <div className="flex h-28 items-center justify-center text-xs text-slate-400">
         No data available
@@ -204,16 +250,19 @@ function MiniChart({
     );
   }
 
-  const max = Math.max(...data);
-  const min = Math.min(...data);
+  const safeData = data.map((value) =>
+    Number.isFinite(value) ? value : 0
+  );
 
-  const points = data
+  const max = Math.max(...safeData);
+  const min = Math.min(...safeData);
+
+  const points = safeData
     .map((value, index) => {
       const x =
-        data.length === 1
+        safeData.length === 1
           ? width / 2
-          : (index /
-              (data.length - 1)) *
+          : (index / (safeData.length - 1)) *
             width;
 
       const y =
@@ -244,12 +293,12 @@ function MiniChart({
           className="text-violet-500"
         />
 
-        {data.map((value, index) => {
+        {safeData.map((value, index) => {
           const x =
-            data.length === 1
+            safeData.length === 1
               ? width / 2
               : (index /
-                  (data.length - 1)) *
+                  (safeData.length - 1)) *
                 width;
 
           const y =
@@ -279,8 +328,6 @@ function MiniChart({
 // ======================================================
 
 export default function AdminDashboardPage() {
-  // IMPORTANT:
-  // We now get BOTH user and auth loading state.
   const {
     user,
     loading: authLoading,
@@ -296,7 +343,7 @@ export default function AdminDashboardPage() {
     useState("");
 
   // ====================================================
-  // FETCH ANALYTICS
+  // FETCH ADMIN ANALYTICS
   // ====================================================
 
   useEffect(() => {
@@ -304,18 +351,9 @@ export default function AdminDashboardPage() {
 
     const fetchAnalytics = async () => {
       try {
-        // ------------------------------------------------
-        // WAIT FOR FIREBASE AUTH
-        // ------------------------------------------------
-
         if (authLoading) {
           return;
         }
-
-        // ------------------------------------------------
-        // FIREBASE FINISHED LOADING
-        // BUT THERE IS NO USER
-        // ------------------------------------------------
 
         if (!user) {
           if (!cancelled) {
@@ -331,10 +369,6 @@ export default function AdminDashboardPage() {
           setError("");
         }
 
-        // ------------------------------------------------
-        // GET FRESH FIREBASE TOKEN
-        // ------------------------------------------------
-
         const token =
           await user.getIdToken(true);
 
@@ -344,43 +378,48 @@ export default function AdminDashboardPage() {
           );
         }
 
-        console.log(
-          "Fetching admin analytics..."
+        const response = await fetch(
+          "/api/analytics",
+          {
+            method: "GET",
+
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+              "Content-Type":
+                "application/json",
+            },
+
+            cache: "no-store",
+          }
         );
 
-        // ------------------------------------------------
-        // CALL ANALYTICS API
-        // ------------------------------------------------
+        const contentType =
+          response.headers.get(
+            "content-type"
+          ) || "";
 
-        const response =
-          await fetch(
-            "/api/analytics",
-            {
-              method: "GET",
+        let result: AnalyticsData & {
+          error?: string;
+        };
 
-              headers: {
-                Authorization:
-                  `Bearer ${token}`,
+        if (
+          contentType.includes(
+            "application/json"
+          )
+        ) {
+          result = await response.json();
+        } else {
+          const text =
+            await response.text();
 
-                "Content-Type":
-                  "application/json",
-              },
-
-              cache: "no-store",
-            }
+          throw new Error(
+            `Server returned non-JSON response (${response.status}). ${text.slice(
+              0,
+              150
+            )}`
           );
-
-        const result =
-          await response.json();
-
-        console.log(
-          "Admin Dashboard Analytics:",
-          result
-        );
-
-        // ------------------------------------------------
-        // API ERROR
-        // ------------------------------------------------
+        }
 
         if (!response.ok) {
           throw new Error(
@@ -389,16 +428,14 @@ export default function AdminDashboardPage() {
           );
         }
 
-        if (!result.success) {
+        if (
+          result?.success === false
+        ) {
           throw new Error(
             result?.error ||
-              "Analytics request failed"
+              "Failed to load admin analytics."
           );
         }
-
-        // ------------------------------------------------
-        // SAVE DATA
-        // ------------------------------------------------
 
         if (!cancelled) {
           setData(result);
@@ -416,9 +453,11 @@ export default function AdminDashboardPage() {
               ? err.message
               : "Failed to load dashboard data."
           );
+
+          setData(null);
         }
       } finally {
-        if (!cancelled && !authLoading) {
+        if (!cancelled) {
           setLoading(false);
         }
       }
@@ -465,7 +504,7 @@ export default function AdminDashboardPage() {
 
   if (error || !data) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50">
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
         <div className="rounded-xl border border-red-200 bg-white px-6 py-5 text-sm text-red-600 shadow-sm">
           {error ||
             "Failed to load dashboard."}
@@ -475,32 +514,88 @@ export default function AdminDashboardPage() {
   }
 
   // ====================================================
-  // ACTIVE USERS
+  // SAFE DATA
   // ====================================================
 
-  const activeUsers =
-    data.users.filter(
-      (user) =>
-        getStatus(user.lastActive) ===
-        "Active"
-    ).length;
+  // IMPORTANT:
+  // Never use data.users directly for map/filter.
+  // The API may omit users or return undefined.
+
+  const users: UserAnalytics[] =
+    Array.isArray(data.users)
+      ? data.users
+      : [];
+
+  const stats = {
+    totalUsers:
+      data.stats?.totalUsers ?? users.length,
+
+    totalSearches:
+      data.stats?.totalSearches ?? 0,
+
+    totalSummaries:
+      data.stats?.totalSummaries ?? 0,
+
+    totalSavedSummaries:
+      data.stats?.totalSavedSummaries ?? 0,
+
+    totalQuizzesCompleted:
+      data.stats?.totalQuizzesCompleted ?? 0,
+
+    activeUsers:
+      data.stats?.activeUsers ?? 0,
+  };
 
   // ====================================================
-  // CHART DATA
+  // ACTIVE USERS — 20 DAYS
+  // ====================================================
+
+  const activeUsers = users.filter(
+    (currentUser) =>
+      getStatus(currentUser.lastActive) ===
+      "Active"
+  ).length;
+
+  // ====================================================
+  // REGISTRATION CHART DATA
   // ====================================================
 
   const registrationData =
-    data.users.map(() => 1);
+    Array.isArray(
+      data.analytics?.registrations
+    ) &&
+    data.analytics.registrations.length > 0
+      ? data.analytics.registrations.map(
+          (item) => item.count ?? 0
+        )
+      : users.map(() => 1);
 
-  const searchData =
-    data.users.map(
-      (user) => user.searches
-    );
+  // ====================================================
+  // SEARCH CHART DATA
+  // ====================================================
 
-  const summaryData =
-    data.users.map(
-      (user) => user.summaries
-    );
+  const searchData = users.map(
+    (currentUser) =>
+      currentUser.searches ?? 0
+  );
+
+  // ====================================================
+  // SUMMARY CHART DATA
+  // ====================================================
+
+  const summaryData = users.map(
+    (currentUser) =>
+      currentUser.summaries ?? 0
+  );
+
+  // ====================================================
+  // QUIZ CHART DATA
+  // ====================================================
+
+  const quizData = users.map(
+    (currentUser) =>
+      currentUser.quizzesCompleted ?? 0
+  );
 
   // ====================================================
   // PAGE
@@ -510,9 +605,9 @@ export default function AdminDashboardPage() {
     <main className="min-h-screen bg-slate-50 px-6 py-7">
       <div className="mx-auto max-w-7xl">
 
-        {/* ============================================
+        {/* ==================================================
             HEADER
-        ============================================ */}
+        ================================================== */}
 
         <div className="mb-7 flex items-center justify-between">
           <div>
@@ -539,51 +634,59 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* ============================================
+        {/* ==================================================
             STATISTICS
-        ============================================ */}
+        ================================================== */}
 
-        <div className="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
 
           <StatCard
             title="Total Users"
-            value={
-              data.stats.totalUsers
-            }
+            value={stats.totalUsers}
+            subtitle="All registered users"
             icon={Users}
             iconClass="bg-violet-50 text-violet-600"
           />
 
           <StatCard
-            title="Total Searches"
-            value={
-              data.stats.totalSearches
-            }
-            icon={Search}
-            iconClass="bg-blue-50 text-blue-600"
-          />
-
-          <StatCard
-            title="Summaries Generated"
-            value={
-              data.stats.totalSummaries
-            }
-            icon={FileText}
+            title="Active Users"
+            value={activeUsers}
+            subtitle="Active in last 20 days"
+            icon={Users}
             iconClass="bg-emerald-50 text-emerald-600"
           />
 
           <StatCard
-            title="Active Users (7 Days)"
-            value={activeUsers}
-            icon={TrendingUp}
+            title="Total Summaries"
+            value={stats.totalSummaries}
+            subtitle="All time summaries"
+            icon={FileText}
+            iconClass="bg-blue-50 text-blue-600"
+          />
+
+          <StatCard
+            title="Total Searches"
+            value={stats.totalSearches}
+            subtitle="All time searches"
+            icon={Search}
             iconClass="bg-orange-50 text-orange-500"
+          />
+
+          <StatCard
+            title="Quizzes Attempted"
+            value={
+              stats.totalQuizzesCompleted
+            }
+            subtitle="All quizzes completed"
+            icon={ClipboardCheck}
+            iconClass="bg-pink-50 text-pink-500"
           />
 
         </div>
 
-        {/* ============================================
+        {/* ==================================================
             USERS OVERVIEW
-        ============================================ */}
+        ================================================== */}
 
         <section className="mb-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
@@ -594,6 +697,7 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="overflow-x-auto">
+
             <table className="w-full text-sm">
 
               <thead>
@@ -620,6 +724,10 @@ export default function AdminDashboardPage() {
                   </th>
 
                   <th className="px-5 py-3 text-left font-medium">
+                    Quizzes Attempted
+                  </th>
+
+                  <th className="px-5 py-3 text-left font-medium">
                     Last Active
                   </th>
 
@@ -632,98 +740,128 @@ export default function AdminDashboardPage() {
 
               <tbody>
 
-                {data.users.length === 0 ? (
+                {users.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-5 py-8 text-center text-slate-400"
                     >
                       No users found.
                     </td>
                   </tr>
                 ) : (
-                  data.users.map(
-                    (user) => {
+                  users.map(
+                    (currentUser) => {
                       const status =
                         getStatus(
-                          user.lastActive
+                          currentUser.lastActive
                         );
+
+                      const displayName =
+                        currentUser.name ||
+                        `${currentUser.firstName || ""} ${
+                          currentUser.lastName || ""
+                        }`.trim() ||
+                        "Unknown User";
 
                       return (
                         <tr
-                          key={user.uid}
+                          key={
+                            currentUser.uid
+                          }
                           className="border-t border-slate-100"
                         >
 
                           {/* USER */}
 
                           <td className="px-5 py-3.5 font-medium text-slate-800">
+
                             <div className="flex items-center gap-3">
 
-                              {user.photoURL ? (
- <img  src={ user.photoURL  }
+                              {currentUser.photoURL ? (
+                                <img
+                                  src={
+                                    currentUser.photoURL
+                                  }
                                   alt={
-                                    user.name
+                                    displayName
                                   }
                                   className="h-9 w-9 rounded-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                  onError={(
+                                    event
+                                  ) => {
+                                    event.currentTarget.style.display =
+                                      "none";
+                                  }}
                                 />
                               ) : (
                                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 font-semibold text-violet-600">
-                                  {user.name
-                                    ?.charAt(
+                                  {displayName
+                                    .charAt(
                                       0
                                     )
-                                    ?.toUpperCase() ||
-                                    "U"}
+                                    .toUpperCase()}
                                 </div>
                               )}
 
-                              {user.name}
+                              <span>
+                                {displayName}
+                              </span>
 
                             </div>
+
                           </td>
 
                           {/* EMAIL */}
 
                           <td className="px-5 py-3.5 text-slate-500">
-                            {user.email}
+                            {currentUser.email ||
+                              "No email"}
                           </td>
 
                           {/* JOINED */}
 
                           <td className="px-5 py-3.5 text-slate-500">
                             {formatDate(
-                              user.createdAt
+                              currentUser.createdAt ||
+                                currentUser.joinedOn
                             )}
                           </td>
 
                           {/* SUMMARIES */}
 
                           <td className="px-5 py-3.5 text-slate-600">
-                            {
-                              user.summaries
-                            }
+                            {currentUser.summaries ??
+                              0}
                           </td>
 
                           {/* SEARCHES */}
 
                           <td className="px-5 py-3.5 text-slate-600">
-                            {
-                              user.searches
-                            }
+                            {currentUser.searches ??
+                              0}
+                          </td>
+
+                          {/* QUIZZES */}
+
+                          <td className="px-5 py-3.5 text-slate-600">
+                            {currentUser.quizzesCompleted ??
+                              0}
                           </td>
 
                           {/* LAST ACTIVE */}
 
                           <td className="px-5 py-3.5 text-slate-500">
                             {formatLastActive(
-                              user.lastActive
+                              currentUser.lastActive
                             )}
                           </td>
 
                           {/* STATUS */}
 
                           <td className="px-5 py-3.5">
+
                             <span
                               className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
                                 status ===
@@ -734,6 +872,7 @@ export default function AdminDashboardPage() {
                             >
                               {status}
                             </span>
+
                           </td>
 
                         </tr>
@@ -743,13 +882,16 @@ export default function AdminDashboardPage() {
                 )}
 
               </tbody>
+
             </table>
+
           </div>
+
         </section>
 
-        {/* ============================================
+        {/* ==================================================
             ANALYTICS
-        ============================================ */}
+        ================================================== */}
 
         <section>
 
@@ -768,18 +910,19 @@ export default function AdminDashboardPage() {
               </p>
 
               <MiniChart
-                data={
-                  registrationData
-                }
+                data={registrationData}
               />
 
               <div className="mt-2 flex justify-between text-[10px] text-slate-400">
-                <span>Users</span>
 
                 <span>
-                  {data.users.length}{" "}
-                  total
+                  Registrations
                 </span>
+
+                <span>
+                  {users.length} total
+                </span>
+
               </div>
 
             </div>
@@ -797,15 +940,15 @@ export default function AdminDashboardPage() {
               />
 
               <div className="mt-2 flex justify-between text-[10px] text-slate-400">
-                <span>Users</span>
 
                 <span>
-                  {
-                    data.stats
-                      .totalSearches
-                  }{" "}
-                  total
+                  Users
                 </span>
+
+                <span>
+                  {stats.totalSearches} total
+                </span>
+
               </div>
 
             </div>
@@ -823,20 +966,21 @@ export default function AdminDashboardPage() {
               />
 
               <div className="mt-2 flex justify-between text-[10px] text-slate-400">
-                <span>Users</span>
 
                 <span>
-                  {
-                    data.stats
-                      .totalSummaries
-                  }{" "}
-                  total
+                  Users
                 </span>
+
+                <span>
+                  {stats.totalSummaries} total
+                </span>
+
               </div>
 
             </div>
 
           </div>
+
         </section>
 
       </div>

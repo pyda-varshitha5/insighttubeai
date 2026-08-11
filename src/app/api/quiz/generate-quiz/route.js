@@ -2,13 +2,18 @@ import { GoogleGenAI } from "@google/genai";
 
 // ======================================================
 // GEMINI CLIENT
-// Uses the SAME GEMINI_API_KEY from .env.local
 // ======================================================
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_QUIZ_API_KEY,
-});
+const API_KEY = process.env.GEMINI_QUIZ_API_KEY;
 
+console.log("QUIZ API LOADED");
+console.log("Gemini Quiz API Key Loaded:", !!API_KEY);
+
+const ai = API_KEY
+  ? new GoogleGenAI({
+      apiKey: API_KEY,
+    })
+  : null;
 
 // ======================================================
 // POST - GENERATE QUIZ
@@ -16,19 +21,18 @@ const ai = new GoogleGenAI({
 
 export async function POST(request) {
   try {
-
     // ==================================================
     // CHECK API KEY
     // ==================================================
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    if (!API_KEY || !ai) {
+      console.error("GEMINI_QUIZ_API_KEY is missing.");
 
-    if (!apiKey) {
       return Response.json(
         {
           success: false,
           message:
-            "GEMINI_API_KEY is missing in .env.local",
+            "GEMINI_QUIZ_API_KEY is missing in .env.local",
         },
         {
           status: 500,
@@ -36,13 +40,11 @@ export async function POST(request) {
       );
     }
 
-
     // ==================================================
     // READ REQUEST BODY
     // ==================================================
 
     const body = await request.json();
-
 
     // ==================================================
     // GET TOPIC
@@ -52,7 +54,6 @@ export async function POST(request) {
       typeof body?.topic === "string"
         ? body.topic.trim()
         : "";
-
 
     // ==================================================
     // VALIDATE TOPIC
@@ -70,12 +71,10 @@ export async function POST(request) {
       );
     }
 
-
     console.log(
       "Generating quiz using Gemini:",
       topic
     );
-
 
     // ==================================================
     // GEMINI PROMPT
@@ -102,11 +101,10 @@ STRICT RULES:
 8. Include a mixture of easy, medium, and slightly difficult questions.
 9. Provide a short explanation for every correct answer.
 10. Keep the questions suitable for students.
-11. Return ONLY JSON.
+11. Return ONLY valid JSON.
 12. Do not return Markdown.
 13. Do not use code fences.
 `;
-
 
     // ==================================================
     // JSON SCHEMA
@@ -123,7 +121,6 @@ STRICT RULES:
             type: "object",
 
             properties: {
-
               question: {
                 type: "string",
               },
@@ -143,7 +140,6 @@ STRICT RULES:
               explanation: {
                 type: "string",
               },
-
             },
 
             required: [
@@ -156,24 +152,22 @@ STRICT RULES:
         },
       },
 
-      required: [
-        "questions",
-      ],
+      required: ["questions"],
     };
-
 
     // ==================================================
     // CALL GEMINI
     // ==================================================
 
+    console.log("Calling Gemini...");
+
     const response =
       await ai.models.generateContent({
+        model: "gemini-2.5-flash",
 
-      model: "gemini-2.5-flash",
         contents: prompt,
 
         config: {
-
           temperature: 0.5,
 
           maxOutputTokens: 6000,
@@ -183,23 +177,18 @@ STRICT RULES:
 
           responseSchema,
         },
-
       });
-
 
     // ==================================================
     // GET GEMINI TEXT
     // ==================================================
 
-    const content =
-      response.text;
-
+    const content = response.text;
 
     if (
       typeof content !== "string" ||
       !content.trim()
     ) {
-
       console.error(
         "Gemini returned empty response."
       );
@@ -209,11 +198,9 @@ STRICT RULES:
       );
     }
 
-
     console.log(
       "Gemini quiz response received."
     );
-
 
     // ==================================================
     // PARSE JSON
@@ -222,12 +209,8 @@ STRICT RULES:
     let quizData;
 
     try {
-
-      quizData =
-        JSON.parse(content);
-
+      quizData = JSON.parse(content);
     } catch (error) {
-
       console.error(
         "Invalid JSON returned by Gemini:"
       );
@@ -239,9 +222,8 @@ STRICT RULES:
       );
     }
 
-
     // ==================================================
-    // VALIDATE QUESTIONS
+    // VALIDATE QUESTIONS ARRAY
     // ==================================================
 
     if (
@@ -250,12 +232,10 @@ STRICT RULES:
         quizData.questions
       )
     ) {
-
       throw new Error(
         "Gemini response does not contain a questions array."
       );
     }
-
 
     // ==================================================
     // CHECK QUESTION COUNT
@@ -264,12 +244,10 @@ STRICT RULES:
     if (
       quizData.questions.length !== 10
     ) {
-
       throw new Error(
         `Expected 10 questions but received ${quizData.questions.length}.`
       );
     }
-
 
     // ==================================================
     // VALIDATE EACH QUESTION
@@ -280,10 +258,8 @@ STRICT RULES:
       i < quizData.questions.length;
       i++
     ) {
-
       const question =
         quizData.questions[i];
-
 
       // ----------------------------------------------
       // QUESTION TEXT
@@ -295,12 +271,10 @@ STRICT RULES:
           "string" ||
         !question.question.trim()
       ) {
-
         throw new Error(
           `Question ${i + 1} has no question text.`
         );
       }
-
 
       // ----------------------------------------------
       // OPTIONS
@@ -312,12 +286,10 @@ STRICT RULES:
         ) ||
         question.options.length !== 4
       ) {
-
         throw new Error(
           `Question ${i + 1} must have exactly 4 options.`
         );
       }
-
 
       // ----------------------------------------------
       // CHECK OPTIONS
@@ -328,19 +300,31 @@ STRICT RULES:
         j < question.options.length;
         j++
       ) {
-
         if (
           typeof question.options[j] !==
             "string" ||
           !question.options[j].trim()
         ) {
-
           throw new Error(
             `Question ${i + 1} contains an invalid option.`
           );
         }
       }
 
+      // ----------------------------------------------
+      // CHECK DUPLICATE OPTIONS
+      // ----------------------------------------------
+
+      const uniqueOptions =
+        new Set(question.options);
+
+      if (
+        uniqueOptions.size !== 4
+      ) {
+        throw new Error(
+          `Question ${i + 1} contains duplicate options.`
+        );
+      }
 
       // ----------------------------------------------
       // CORRECT ANSWER
@@ -351,12 +335,10 @@ STRICT RULES:
           "string" ||
         !question.answer.trim()
       ) {
-
         throw new Error(
           `Question ${i + 1} has no correct answer.`
         );
       }
-
 
       // ----------------------------------------------
       // ANSWER MUST MATCH OPTION
@@ -367,12 +349,10 @@ STRICT RULES:
           question.answer
         )
       ) {
-
         throw new Error(
           `Question ${i + 1} has an invalid correct answer.`
         );
       }
-
 
       // ----------------------------------------------
       // EXPLANATION
@@ -383,17 +363,19 @@ STRICT RULES:
           "string" ||
         !question.explanation.trim()
       ) {
-
         question.explanation =
           "No explanation was provided.";
       }
-
     }
-
 
     // ==================================================
     // SUCCESS
     // ==================================================
+
+    console.log(
+      "Quiz generated successfully:",
+      topic
+    );
 
     return Response.json(
       {
@@ -408,10 +390,7 @@ STRICT RULES:
         status: 200,
       }
     );
-
-
   } catch (error) {
-
     // ==================================================
     // ERROR HANDLING
     // ==================================================
@@ -421,19 +400,14 @@ STRICT RULES:
       error
     );
 
-
     let message =
       "Failed to generate quiz.";
-
 
     if (
       error instanceof Error
     ) {
-
-      message =
-        error.message;
+      message = error.message;
     }
-
 
     return Response.json(
       {
