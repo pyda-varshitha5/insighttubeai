@@ -1,21 +1,89 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DecodedIdToken } from "firebase-admin/auth";
 
 import connectDB from "@/app/lib/mongodb";
 import User from "@/models/User";
-import Progress from "../../models/Progress";
+import Progress from "@/app/models/Progress";
 import { adminAuth } from "@/lib/firebaseAdmin";
+
+/*
+ * ---------------------------------------------------------
+ * TYPES
+ * ---------------------------------------------------------
+ */
+
+interface UserDocument {
+  uid?: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  photoURL?: string;
+  isAdmin?: boolean;
+  createdAt?: Date | string | null;
+  updatedAt?: Date | string | null;
+}
+
+interface ProgressDocument {
+  userId?: string;
+  totalSearches?: number;
+  totalSummaries?: number;
+  savedSummaries?: number;
+  timeSavedMinutes?: number;
+  quizzesCompleted?: number;
+  streak?: number;
+  lastActive?: Date | string | null;
+}
+
+interface AdminDecodedToken extends DecodedIdToken {
+  isAdmin?: boolean;
+  admin?: boolean;
+}
+
+interface UserAnalytics {
+  uid: string;
+  firstName: string;
+  lastName: string;
+  name: string;
+  email: string;
+  photoURL: string;
+
+  joinedOn: Date | string | null;
+  createdAt: Date | string | null;
+  updatedAt: Date | string | null;
+
+  searches: number;
+  summaries: number;
+  savedSummaries: number;
+  timeSavedMinutes: number;
+  timeSavedHours: number;
+  quizzesCompleted: number;
+  streak: number;
+
+  lastActive: Date | string | null;
+  status: "Active" | "Inactive";
+}
+
+/*
+ * ---------------------------------------------------------
+ * GET /api/analytics
+ * ---------------------------------------------------------
+ */
 
 export async function GET(req: NextRequest) {
   try {
-    // =========================================================
-    // 1. CONNECT TO DATABASE
-    // =========================================================
+    /*
+     * =======================================================
+     * 1. CONNECT TO DATABASE
+     * =======================================================
+     */
 
     await connectDB();
 
-    // =========================================================
-    // 2. VERIFY FIREBASE ADMIN AUTHENTICATION
-    // =========================================================
+    /*
+     * =======================================================
+     * 2. VERIFY FIREBASE ADMIN AUTHENTICATION
+     * =======================================================
+     */
 
     const authorization = req.headers.get("authorization");
 
@@ -25,7 +93,9 @@ export async function GET(req: NextRequest) {
           success: false,
           error: "Unauthorized",
         },
-        { status: 401 }
+        {
+          status: 401,
+        }
       );
     }
 
@@ -37,15 +107,19 @@ export async function GET(req: NextRequest) {
           success: false,
           error: "Missing authentication token",
         },
-        { status: 401 }
+        {
+          status: 401,
+        }
       );
     }
 
-    let decodedToken;
+    let decodedToken: AdminDecodedToken;
 
     try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (error) {
+      decodedToken = (await adminAuth.verifyIdToken(
+        token
+      )) as AdminDecodedToken;
+    } catch (error: unknown) {
       console.error("Firebase token verification failed:", error);
 
       return NextResponse.json(
@@ -53,38 +127,54 @@ export async function GET(req: NextRequest) {
           success: false,
           error: "Invalid authentication token",
         },
-        { status: 401 }
+        {
+          status: 401,
+        }
       );
     }
 
-    // =========================================================
-    // 3. CHECK WHETHER LOGGED-IN USER IS ADMIN
-    // =========================================================
+    /*
+     * =======================================================
+     * 3. CHECK WHETHER LOGGED-IN USER IS ADMIN
+     * =======================================================
+     */
 
-    const adminUser = await User.findOne({
+    const adminUserResult = await User.findOne({
       $or: [
-        { uid: decodedToken.uid },
-        { email: decodedToken.email },
+        {
+          uid: decodedToken.uid,
+        },
+        {
+          email: decodedToken.email,
+        },
       ],
     }).lean();
 
-    if (!adminUser) {
+    if (!adminUserResult) {
       return NextResponse.json(
         {
           success: false,
           error: "Admin user not found",
         },
-        { status: 403 }
+        {
+          status: 403,
+        }
       );
     }
 
-    // Your existing admin field may exist on the User document.
-    // If your Firebase custom claims contain admin=true, this also
-    // allows that.
+    /*
+     * Convert the MongoDB result into our known shape.
+     *
+     * The User model can have additional properties, but
+     * analytics only needs the fields declared above.
+     */
+    const adminUser =
+      adminUserResult as unknown as UserDocument;
+
     const isAdmin =
-      (adminUser as any).isAdmin === true ||
-      (decodedToken as any).isAdmin === true ||
-      (decodedToken as any).admin === true;
+      adminUser.isAdmin === true ||
+      decodedToken.isAdmin === true ||
+      decodedToken.admin === true;
 
     if (!isAdmin) {
       return NextResponse.json(
@@ -92,180 +182,266 @@ export async function GET(req: NextRequest) {
           success: false,
           error: "Admin access required",
         },
-        { status: 403 }
+        {
+          status: 403,
+        }
       );
     }
 
-    // =========================================================
-    // 4. GET ALL USERS
-    // =========================================================
+    /*
+     * =======================================================
+     * 4. GET ALL USERS
+     * =======================================================
+     */
 
-    const users = await User.find({})
-      .sort({ createdAt: 1 })
+    const usersResult = await User.find({})
+      .sort({
+        createdAt: 1,
+      })
       .lean();
 
-    // =========================================================
-    // 5. GET ALL PROGRESS
-    //
-    // IMPORTANT:
-    // This is the SAME Progress collection used by:
-    //
-    // /api/progress?userId=...
-    //
-    // Therefore admin values will match dashboard values.
-    // =========================================================
+    const users =
+      usersResult as unknown as UserDocument[];
 
-    const allProgress = await Progress.find({}).lean();
+    /*
+     * =======================================================
+     * 5. GET ALL PROGRESS
+     *
+     * This is the same Progress collection used by:
+     *
+     * /api/progress?userId=...
+     *
+     * Therefore admin analytics will use the same values
+     * displayed on the user's dashboard.
+     * =======================================================
+     */
 
-    // Create a quick lookup:
-    // userId -> Progress document
-    const progressMap = new Map<string, any>();
+    const progressResult = await Progress.find({}).lean();
+
+    const allProgress =
+      progressResult as unknown as ProgressDocument[];
+
+    /*
+     * Create a quick lookup:
+     *
+     * userId -> Progress document
+     */
+
+    const progressMap =
+      new Map<string, ProgressDocument>();
 
     for (const progress of allProgress) {
       if (progress.userId) {
-        progressMap.set(String(progress.userId), progress);
+        progressMap.set(
+          String(progress.userId),
+          progress
+        );
       }
     }
 
-    // =========================================================
-    // 6. BUILD USER ANALYTICS
-    // =========================================================
+    /*
+     * =======================================================
+     * 6. BUILD USER ANALYTICS
+     * =======================================================
+     */
 
-    const userAnalytics = users.map((user: any) => {
-      const userProgress = progressMap.get(String(user.uid));
+    const userAnalytics: UserAnalytics[] = users.map(
+      (user) => {
+        const uid = String(user.uid ?? "");
 
-      // Dashboard values
-      const searches = Number(
-        userProgress?.totalSearches ?? 0
-      );
+        const userProgress =
+          progressMap.get(uid);
 
-      const summaries = Number(
-        userProgress?.totalSummaries ?? 0
-      );
+        /*
+         * Dashboard values
+         */
 
-      const savedSummaries = Number(
-        userProgress?.savedSummaries ?? 0
-      );
+        const searches = Number(
+          userProgress?.totalSearches ?? 0
+        );
 
-      const timeSavedMinutes = Number(
-        userProgress?.timeSavedMinutes ?? 0
-      );
+        const summaries = Number(
+          userProgress?.totalSummaries ?? 0
+        );
 
-      const quizzesCompleted = Number(
-        userProgress?.quizzesCompleted ?? 0
-      );
+        const savedSummaries = Number(
+          userProgress?.savedSummaries ?? 0
+        );
 
-      const streak = Number(
-        userProgress?.streak ?? 0
-      );
+        const timeSavedMinutes = Number(
+          userProgress?.timeSavedMinutes ?? 0
+        );
 
-      // Last active:
-      // Prefer Progress.lastActive if it exists.
-      // Otherwise use User.updatedAt.
-      const lastActive =
-        userProgress?.lastActive ??
-        user.updatedAt ??
-        user.createdAt ??
-        null;
+        const quizzesCompleted = Number(
+          userProgress?.quizzesCompleted ?? 0
+        );
 
-      return {
-        uid: user.uid,
+        const streak = Number(
+          userProgress?.streak ?? 0
+        );
 
-        firstName: user.firstName ?? "",
-        lastName: user.lastName ?? "",
+        /*
+         * Last active:
+         *
+         * Prefer Progress.lastActive.
+         * Otherwise use User.updatedAt.
+         * Otherwise use User.createdAt.
+         */
 
-        name:
-          `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() ||
-          user.email?.split("@")[0] ||
-          "User",
+        const lastActive =
+          userProgress?.lastActive ??
+          user.updatedAt ??
+          user.createdAt ??
+          null;
 
-        email: user.email ?? "",
+        /*
+         * User name
+         */
 
-        photoURL: user.photoURL ?? "",
+        const firstName =
+          user.firstName ?? "";
 
-        // FIRST JOINING DATE
-        // This comes from User.createdAt.
-        // It does NOT change when the user logs in again.
-        joinedOn: user.createdAt ?? null,
+        const lastName =
+          user.lastName ?? "";
 
-        createdAt: user.createdAt ?? null,
-        updatedAt: user.updatedAt ?? null,
+        const fallbackName =
+          user.email?.split("@")[0] ??
+          "User";
 
-        // =====================================================
-        // EXACT DASHBOARD VALUES
-        // =====================================================
+        const name =
+          `${firstName} ${lastName}`.trim() ||
+          fallbackName;
 
-        searches,
+        return {
+          uid,
 
-        summaries,
+          firstName,
 
-        savedSummaries,
+          lastName,
 
-        timeSavedMinutes,
+          name,
 
-        timeSavedHours: Number(
-          (timeSavedMinutes / 60).toFixed(1)
-        ),
+          email:
+            user.email ?? "",
 
-        quizzesCompleted,
+          photoURL:
+            user.photoURL ?? "",
 
-        streak,
+          /*
+           * FIRST JOINING DATE
+           *
+           * This comes from User.createdAt.
+           * It does not change when the user logs in again.
+           */
 
-        lastActive,
+          joinedOn:
+            user.createdAt ?? null,
 
-        status: lastActive
-          ? "Active"
-          : "Inactive",
-      };
-    });
+          createdAt:
+            user.createdAt ?? null,
 
-    // =========================================================
-    // 7. OVERALL TOTALS
-    // =========================================================
+          updatedAt:
+            user.updatedAt ?? null,
 
-    const totalUsers = userAnalytics.length;
+          /*
+           * EXACT DASHBOARD VALUES
+           */
 
-    const totalSearches = userAnalytics.reduce(
-      (total, user) => total + user.searches,
-      0
+          searches,
+
+          summaries,
+
+          savedSummaries,
+
+          timeSavedMinutes,
+
+          timeSavedHours: Number(
+            (timeSavedMinutes / 60).toFixed(1)
+          ),
+
+          quizzesCompleted,
+
+          streak,
+
+          lastActive,
+
+          status: lastActive
+            ? "Active"
+            : "Inactive",
+        };
+      }
     );
 
-    const totalSummaries = userAnalytics.reduce(
-      (total, user) => total + user.summaries,
-      0
-    );
+    /*
+     * =======================================================
+     * 7. OVERALL TOTALS
+     * =======================================================
+     */
 
-    const totalSavedSummaries = userAnalytics.reduce(
-      (total, user) => total + user.savedSummaries,
-      0
-    );
+    const totalUsers =
+      userAnalytics.length;
 
-    const totalTimeSavedMinutes = userAnalytics.reduce(
-      (total, user) => total + user.timeSavedMinutes,
-      0
-    );
+    const totalSearches =
+      userAnalytics.reduce(
+        (total, user) =>
+          total + user.searches,
+        0
+      );
 
-    const totalQuizzesCompleted = userAnalytics.reduce(
-      (total, user) => total + user.quizzesCompleted,
-      0
-    );
+    const totalSummaries =
+      userAnalytics.reduce(
+        (total, user) =>
+          total + user.summaries,
+        0
+      );
 
-    // =========================================================
-    // 8. USER REGISTRATIONS
-    // =========================================================
+    const totalSavedSummaries =
+      userAnalytics.reduce(
+        (total, user) =>
+          total + user.savedSummaries,
+        0
+      );
 
-    const registrationMap = new Map<string, number>();
+    const totalTimeSavedMinutes =
+      userAnalytics.reduce(
+        (total, user) =>
+          total + user.timeSavedMinutes,
+        0
+      );
 
-    for (const user of users as any[]) {
-      if (!user.createdAt) continue;
+    const totalQuizzesCompleted =
+      userAnalytics.reduce(
+        (total, user) =>
+          total + user.quizzesCompleted,
+        0
+      );
 
-      const date = new Date(user.createdAt);
+    /*
+     * =======================================================
+     * 8. USER REGISTRATIONS
+     * =======================================================
+     */
 
-      const key = date.toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
+    const registrationMap =
+      new Map<string, number>();
+
+    for (const user of users) {
+      if (!user.createdAt) {
+        continue;
+      }
+
+      const date =
+        new Date(user.createdAt);
+
+      const key =
+        date.toLocaleDateString(
+          "en-IN",
+          {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          }
+        );
 
       registrationMap.set(
         key,
@@ -273,78 +449,60 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const registrations = Array.from(
-      registrationMap.entries()
-    ).map(([date, count]) => ({
-      date,
-      count,
-    }));
+    const registrations =
+      Array.from(
+        registrationMap.entries()
+      ).map(
+        ([date, count]) => ({
+          date,
+          count,
+        })
+      );
 
-    // =========================================================
-    // 9. SEARCHES BY USER
-    // =========================================================
+    /*
+     * =======================================================
+     * 9. SEARCHES BY USER
+     * =======================================================
+     */
 
-    const searchesByUser = userAnalytics.map((user) => ({
-      uid: user.uid,
-      name: user.name,
-      email: user.email,
-      searches: user.searches,
-    }));
+    const searchesByUser =
+      userAnalytics.map(
+        (user) => ({
+          uid: user.uid,
+          name: user.name,
+          email: user.email,
+          searches: user.searches,
+        })
+      );
 
-    // =========================================================
-    // 10. SUMMARIES BY USER
-    // =========================================================
+    /*
+     * =======================================================
+     * 10. SUMMARIES BY USER
+     * =======================================================
+     */
 
-    const summariesByUser = userAnalytics.map((user) => ({
-      uid: user.uid,
-      name: user.name,
-      email: user.email,
-      summaries: user.summaries,
-    }));
+    const summariesByUser =
+      userAnalytics.map(
+        (user) => ({
+          uid: user.uid,
+          name: user.name,
+          email: user.email,
+          summaries: user.summaries,
+        })
+      );
 
-    // =========================================================
-    // 11. DAILY SEARCH/SUMMARY DATA
-    //
-    // Uses createdAt from actual Progress activity arrays when
-    // available.
-    // =========================================================
-
-    const activityMap = new Map<
-      string,
-      {
-        searches: number;
-        summaries: number;
-      }
-    >();
-
-    for (const progress of allProgress as any[]) {
-      const searchedTopics = Array.isArray(
-        progress.searchedTopics
-      )
-        ? progress.searchedTopics
-        : [];
-
-      const generatedSummaries = Array.isArray(
-        progress.generatedSummaries
-      )
-        ? progress.generatedSummaries
-        : [];
-
-      // If arrays only contain strings, we cannot know the
-      // exact date of every old activity.
-      //
-      // So we don't invent dates here.
-      // Dashboard totals remain the source of truth.
-      void searchedTopics;
-      void generatedSummaries;
-    }
-
-    // =========================================================
-    // 12. RESPONSE
-    // =========================================================
+    /*
+     * =======================================================
+     * 11. RESPONSE
+     * =======================================================
+     */
 
     return NextResponse.json({
       success: true,
+
+      /*
+       * Overall dashboard statistics
+       */
 
       overview: {
         totalUsers,
@@ -357,44 +515,79 @@ export async function GET(req: NextRequest) {
 
         totalTimeSavedMinutes,
 
-        totalTimeSavedHours: Number(
-          (totalTimeSavedMinutes / 60).toFixed(1)
-        ),
+        totalTimeSavedHours:
+          Number(
+            (
+              totalTimeSavedMinutes / 60
+            ).toFixed(1)
+          ),
 
         totalQuizzesCompleted,
       },
 
-      // Main users table
+      /*
+       * Main users table
+       */
+
       users: userAnalytics,
 
-      // Keep this name because your existing admin page
-      // appears to use userAnalytics.
+      /*
+       * Keep this property because your existing
+       * admin page appears to use userAnalytics.
+       */
+
       userAnalytics,
 
-      // Charts
+      /*
+       * Charts
+       */
+
       registrations,
 
-      userRegistrations: registrations,
+      userRegistrations:
+        registrations,
 
       searchesByUser,
 
       summariesByUser,
 
-      // Raw progress can be useful for debugging.
-      // Only the values required by the admin dashboard are exposed.
-      progress: userAnalytics.map((user) => ({
-        uid: user.uid,
-        totalSearches: user.searches,
-        totalSummaries: user.summaries,
-        savedSummaries: user.savedSummaries,
-        timeSavedMinutes: user.timeSavedMinutes,
-        quizzesCompleted: user.quizzesCompleted,
-        streak: user.streak,
-        lastActive: user.lastActive,
-      })),
+      /*
+       * Progress information required
+       * by the admin dashboard.
+       */
+
+      progress: userAnalytics.map(
+        (user) => ({
+          uid: user.uid,
+
+          totalSearches:
+            user.searches,
+
+          totalSummaries:
+            user.summaries,
+
+          savedSummaries:
+            user.savedSummaries,
+
+          timeSavedMinutes:
+            user.timeSavedMinutes,
+
+          quizzesCompleted:
+            user.quizzesCompleted,
+
+          streak:
+            user.streak,
+
+          lastActive:
+            user.lastActive,
+        })
+      ),
     });
-  } catch (error) {
-    console.error("ADMIN ANALYTICS ERROR:", error);
+  } catch (error: unknown) {
+    console.error(
+      "ADMIN ANALYTICS ERROR:",
+      error
+    );
 
     return NextResponse.json(
       {
