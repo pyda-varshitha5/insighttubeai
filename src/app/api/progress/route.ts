@@ -11,7 +11,6 @@ export async function GET(req: NextRequest) {
     await connectDB();
 
     const { searchParams } = new URL(req.url);
-
     const userId = searchParams.get("userId");
 
     if (!userId) {
@@ -20,16 +19,14 @@ export async function GET(req: NextRequest) {
           success: false,
           message: "User ID is required.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
     const progress = await Progress.findOne({ userId }).lean();
 
     // --------------------------------------------------
-    // No progress yet
+    // NO PROGRESS YET
     // --------------------------------------------------
 
     if (!progress) {
@@ -47,37 +44,45 @@ export async function GET(req: NextRequest) {
     }
 
     // --------------------------------------------------
-    // SAFELY CALCULATE UNIQUE TOPICS
+    // UNIQUE SEARCH TOPICS
     // --------------------------------------------------
 
     const searchedTopics = Array.isArray(progress.searchedTopics)
       ? progress.searchedTopics
       : [];
 
-   const uniqueTopics = [
-  ...new Set(
-    searchedTopics
-      .filter((topic: unknown): topic is string => {
-        return (
-          typeof topic === "string" &&
-          topic.trim().length > 0
-        );
-      })
-      .map((topic: string) =>
-        topic.trim().toLowerCase()
-      )
-  ),
-];
-
-    // --------------------------------------------------
-    // IMPORTANT:
-    // totalSearches represents UNIQUE TOPICS EXPLORED
-    // --------------------------------------------------
+    const uniqueTopics = [
+      ...new Set(
+        searchedTopics
+          .filter(
+            (topic: unknown): topic is string =>
+              typeof topic === "string" && topic.trim().length > 0
+          )
+          .map((topic: string) => topic.trim().toLowerCase())
+      ),
+    ];
 
     const totalSearches = uniqueTopics.length;
 
     // --------------------------------------------------
-    // Keep MongoDB value synchronized
+    // GENERATED SUMMARIES
+    // --------------------------------------------------
+
+    const generatedSummaries = Array.isArray(progress.generatedSummaries)
+      ? progress.generatedSummaries
+      : [];
+
+    /*
+     * totalSummaries represents the number of summaries
+     * actually stored in generatedSummaries.
+     *
+     * This prevents the dashboard from showing an old
+     * totalSummaries value.
+     */
+    const totalSummaries = generatedSummaries.length;
+
+    // --------------------------------------------------
+    // KEEP DATABASE SYNCHRONIZED
     // --------------------------------------------------
 
     await Progress.updateOne(
@@ -86,6 +91,7 @@ export async function GET(req: NextRequest) {
         $set: {
           searchedTopics: uniqueTopics,
           totalSearches,
+          totalSummaries,
         },
       }
     );
@@ -99,10 +105,7 @@ export async function GET(req: NextRequest) {
 
       totalSearches,
 
-      totalSummaries:
-        typeof progress.totalSummaries === "number"
-          ? progress.totalSummaries
-          : 0,
+      totalSummaries,
 
       savedSummaries:
         typeof progress.savedSummaries === "number"
@@ -126,10 +129,7 @@ export async function GET(req: NextRequest) {
 
       searchedTopics: uniqueTopics,
 
-      generatedSummaries:
-        Array.isArray(progress.generatedSummaries)
-          ? progress.generatedSummaries
-          : [],
+      generatedSummaries,
     });
   } catch (error) {
     console.error("PROGRESS GET ERROR:", error);
@@ -142,9 +142,7 @@ export async function GET(req: NextRequest) {
             ? error.message
             : "Failed to fetch progress.",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }
@@ -156,6 +154,7 @@ export async function GET(req: NextRequest) {
 //
 // 1. completeQuiz
 // 2. addSearch
+// 3. addSummary
 // ======================================================
 
 export async function POST(req: NextRequest) {
@@ -184,9 +183,7 @@ export async function POST(req: NextRequest) {
           success: false,
           message: "User ID is required.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
@@ -230,8 +227,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         action: "completeQuiz",
-        quizzesCompleted:
-          progress.quizzesCompleted,
+        quizzesCompleted: progress.quizzesCompleted,
       });
     }
 
@@ -251,9 +247,7 @@ export async function POST(req: NextRequest) {
             success: false,
             message: "Topic is required.",
           },
-          {
-            status: 400,
-          }
+          { status: 400 }
         );
       }
 
@@ -273,10 +267,59 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         action: "addSearch",
-        totalSearches:
-          progress.totalSearches,
-        searchedTopics:
-          progress.searchedTopics,
+        totalSearches: progress.totalSearches,
+        searchedTopics: progress.searchedTopics,
+      });
+    }
+
+    // ==================================================
+    // ADD GENERATED SUMMARY
+    // ==================================================
+
+    if (action === "addSummary") {
+      const topic =
+        typeof body?.topic === "string"
+          ? body.topic.trim().toLowerCase()
+          : "";
+
+      if (!Array.isArray(progress.generatedSummaries)) {
+        progress.generatedSummaries = [];
+      }
+
+      /*
+       * Every generated summary increases the count.
+       *
+       * We intentionally DO NOT check whether the topic
+       * already exists because the same topic can be
+       * summarized more than once.
+       */
+
+      if (topic) {
+        progress.generatedSummaries.push(topic);
+      } else {
+        progress.generatedSummaries.push("summary");
+      }
+
+      progress.totalSummaries =
+        progress.generatedSummaries.length;
+
+      await progress.save();
+
+      console.log(
+        "SUMMARY GENERATED:",
+        userId,
+        "Topic:",
+        topic,
+        "Total:",
+        progress.totalSummaries
+      );
+
+      return NextResponse.json({
+        success: true,
+        action: "addSummary",
+        totalSummaries: progress.totalSummaries,
+        generatedSummaries:
+          progress.generatedSummaries,
       });
     }
 
@@ -288,11 +331,9 @@ export async function POST(req: NextRequest) {
       {
         success: false,
         message:
-          "Invalid action. Use completeQuiz or addSearch.",
+          "Invalid action. Use completeQuiz, addSearch, or addSummary.",
       },
-      {
-        status: 400,
-      }
+      { status: 400 }
     );
   } catch (error) {
     console.error("PROGRESS POST ERROR:", error);
@@ -305,9 +346,7 @@ export async function POST(req: NextRequest) {
             ? error.message
             : "Failed to update progress.",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }

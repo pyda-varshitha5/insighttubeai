@@ -52,15 +52,13 @@ Start immediately with:
 
 ## Introduction
 
-Then continue with
+Then continue with:
 
 ## Overview
 
 ## Why it Matters
 
 ## Working
-
-...
 
 ---
 
@@ -74,7 +72,7 @@ Explain the topic from beginner to advanced.
 
 ---
 
-## How it Works
+## How It Works
 
 Explain step-by-step using numbered lists.
 
@@ -178,6 +176,10 @@ Write beautiful documentation similar to ChatGPT, MDN and React Docs.
 Return ONLY markdown.
 `;
 
+    // ======================================================
+    // GENERATE SUMMARY
+    // ======================================================
+
     const completion = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
       temperature: 0.3,
@@ -218,22 +220,30 @@ Output ONLY Markdown.
       ],
     });
 
-    const markdown = completion.choices[0]?.message?.content ?? "";
+    const markdown =
+      completion.choices[0]?.message?.content ?? "";
 
-    console.log("Summary API");
+    console.log("====================================");
+    console.log("SUMMARY API");
     console.log("Topic:", topic);
     console.log("User:", userId);
+    console.log("====================================");
 
-    // ==========================
-    // Update Progress
-    // ==========================
+    // ======================================================
+    // UPDATE PROGRESS
+    // ======================================================
 
     if (userId) {
-      const normalizedTopic = topic.toLowerCase().trim();
+      const normalizedTopic =
+        topic.toLowerCase().trim();
 
-      let progress = await Progress.findOne({ userId });
+      let progress =
+        await Progress.findOne({ userId });
 
-      // Create progress if it doesn't exist
+      // --------------------------------------------------
+      // CREATE PROGRESS IF IT DOES NOT EXIST
+      // --------------------------------------------------
+
       if (!progress) {
         progress = new Progress({
           userId,
@@ -248,61 +258,106 @@ Output ONLY Markdown.
         });
       }
 
-      // Ensure array exists
+      // --------------------------------------------------
+      // ENSURE ARRAY EXISTS
+      // --------------------------------------------------
+
       if (!Array.isArray(progress.generatedSummaries)) {
         progress.generatedSummaries = [];
       }
 
-      // Add only unique summaries
-      if (!progress.generatedSummaries.includes(normalizedTopic)) {
-        progress.generatedSummaries.push(normalizedTopic);
-      }
+      // ==================================================
+      // IMPORTANT:
+      //
+      // EVERY GENERATED SUMMARY IS COUNTED.
+      //
+      // DO NOT CHECK includes().
+      //
+      // The same topic can be generated multiple times,
+      // and every generation should increase the count.
+      // ==================================================
 
-      // Update count
-      progress.totalSummaries = progress.generatedSummaries.length;
+      progress.generatedSummaries.push(
+        normalizedTopic
+      );
 
-      // Force mongoose to save new field
-      progress.markModified("generatedSummaries");
+      // --------------------------------------------------
+      // TOTAL SUMMARIES
+      // --------------------------------------------------
+
+      progress.totalSummaries =
+        progress.generatedSummaries.length;
+
+      // --------------------------------------------------
+      // TELL MONGOOSE ARRAY WAS MODIFIED
+      // --------------------------------------------------
+
+      progress.markModified(
+        "generatedSummaries"
+      );
+
+      // --------------------------------------------------
+      // SAVE PROGRESS
+      // --------------------------------------------------
 
       await progress.save();
 
-     console.log("Generated Summaries:", progress.generatedSummaries);
-console.log("Total Summaries:", progress.totalSummaries);
+      console.log(
+        "Generated Summaries:",
+        progress.generatedSummaries
+      );
 
-// ==========================
-// Update User Analytics
-// ==========================
+      console.log(
+        "Total Summaries:",
+        progress.totalSummaries
+      );
 
-await User.findOneAndUpdate(
-  { uid: userId },
-  {
-    $inc: {
-      "analytics.summariesGenerated": 1,
-      totalSummaries: 1,
-    },
-    $set: {
-      "analytics.lastActive": new Date(),
-    },
-  },
-  { new: true }
-);
+      // ==================================================
+      // UPDATE USER ANALYTICS
+      // ==================================================
 
-console.log("User summary analytics updated");
+      await User.findOneAndUpdate(
+        { uid: userId },
+        {
+          $inc: {
+            "analytics.summariesGenerated": 1,
+            totalSummaries: 1,
+          },
+          $set: {
+            "analytics.lastActive": new Date(),
+          },
+        },
+        { new: true }
+      );
+
+      console.log(
+        "User summary analytics updated"
+      );
     }
+
+    // ======================================================
+    // RETURN SUMMARY
+    // ======================================================
 
     return NextResponse.json({
       title: topic,
       subtitle: "AI Generated Study Guide",
       difficulty: "Beginner",
-      lastUpdated: new Date().toLocaleDateString(),
+      lastUpdated:
+        new Date().toLocaleDateString(),
       readingTime: Math.max(
         1,
-        Math.ceil(markdown.split(/\s+/).length / 200)
+        Math.ceil(
+          markdown.split(/\s+/).length / 200
+        )
       ),
       markdown,
     });
   } catch (error) {
-    console.error(error);
+    console.error(
+      "SUMMARY GENERATION ERROR:",
+      error
+    );
 
     return NextResponse.json(
       {
