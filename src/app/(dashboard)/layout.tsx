@@ -9,7 +9,6 @@ import {
   History,
   Bookmark,
   BarChart2,
-  
   Settings,
   Bell,
   Play,
@@ -23,7 +22,6 @@ const NAV_ITEMS = [
   { label: "History", href: "/history", icon: History },
   { label: "Saved", href: "/saved", icon: Bookmark },
   { label: "Analytics", href: "/analytics", icon: BarChart2 },
- 
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -35,7 +33,21 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const { user } = useAuth();
 
-  const firstName = user?.displayName?.split(" ")[0] || "User";
+  // ======================================================
+  // USER INFORMATION
+  // ======================================================
+
+  const displayName =
+    user?.displayName?.trim() ||
+    user?.email?.split("@")[0] ||
+    "User";
+
+  const firstName = displayName.split(/\s+/)[0] || "User";
+
+  const avatarLetter =
+    firstName.charAt(0).toUpperCase() || "U";
+
+  const profilePhoto = user?.photoURL || null;
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -45,14 +57,17 @@ export default function DashboardLayout({
           <div className="w-8 h-8 rounded-lg bg-violet-500 flex items-center justify-center">
             <Play size={16} className="text-white fill-white" />
           </div>
+
           <span className="font-bold text-slate-900">
-            InsightTube<span className="text-violet-500">-AI</span>
+            InsightTube
+            <span className="text-violet-500">-AI</span>
           </span>
         </div>
 
         <nav className="flex-1 px-4 py-3 space-y-2">
           {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
             const active = pathname === href;
+
             return (
               <Link
                 key={href}
@@ -83,17 +98,20 @@ export default function DashboardLayout({
             <h1 className="text-lg font-bold text-slate-900">
               Keep Learning Smarter, {firstName}! 👋
             </h1>
+
             <p className="text-xs text-slate-500 mt-0.5">
               Learn any topic from YouTube, the smarter way.
             </p>
           </div>
 
           <div className="flex items-center gap-4">
+            {/* Search */}
             <div className="relative hidden sm:block">
               <Search
                 size={15}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
               />
+
               <input
                 type="text"
                 placeholder="Search any topic..."
@@ -101,6 +119,7 @@ export default function DashboardLayout({
               />
             </div>
 
+            {/* Notifications */}
             <button
               type="button"
               className="w-9 h-9 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50"
@@ -108,14 +127,32 @@ export default function DashboardLayout({
               <Bell size={16} />
             </button>
 
-            <div className="w-9 h-9 rounded-full bg-violet-500 text-white flex items-center justify-center text-sm font-semibold">
-              V
-            </div>
+            {/* ==================================================
+                PROFILE AVATAR
+               ================================================== */}
+
+            {profilePhoto ? (
+              <img
+                src={profilePhoto}
+                alt={`${displayName}'s profile`}
+                className="w-9 h-9 rounded-full object-cover border border-slate-200"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div
+                className="w-9 h-9 rounded-full bg-violet-500 text-white flex items-center justify-center text-sm font-semibold"
+                title={displayName}
+              >
+                {avatarLetter}
+              </div>
+            )}
           </div>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-8">{children}</main>
+        <main className="flex-1 overflow-y-auto p-8">
+          {children}
+        </main>
       </div>
     </div>
   );
